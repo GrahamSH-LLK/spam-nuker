@@ -1,0 +1,79 @@
+'use strict';
+
+require('dotenv').config();
+
+const { Client, GatewayIntentBits, Partials } = require('discord.js');
+const { handleImageSpam } = require('./handlers/imageSpam');
+const { handleCrossChannelSpam } = require('./handlers/crossChannelSpam');
+
+// ── Configuration ─────────────────────────────────────────────────────────────
+
+const TOKEN = process.env.DISCORD_TOKEN;
+if (!TOKEN) {
+  console.error('[spam-nuker] DISCORD_TOKEN is not set. Please configure .env');
+  process.exit(1);
+}
+
+const TIMEOUT_DURATION = parseInt(process.env.TIMEOUT_DURATION ?? '600', 10);
+const IMAGE_THRESHOLD = parseInt(process.env.IMAGE_THRESHOLD ?? '3', 10);
+const IMAGE_WINDOW = parseInt(process.env.IMAGE_WINDOW ?? '60', 10);
+const CROSS_CHANNEL_THRESHOLD = parseInt(process.env.CROSS_CHANNEL_THRESHOLD ?? '3', 10);
+const CROSS_CHANNEL_WINDOW = parseInt(process.env.CROSS_CHANNEL_WINDOW ?? '60', 10);
+const LOG_CHANNEL_ID = process.env.LOG_CHANNEL_ID || null;
+
+const timeoutMs = TIMEOUT_DURATION * 1000;
+
+// ── Discord client ─────────────────────────────────────────────────────────────
+
+const client = new Client({
+  intents: [
+    GatewayIntentBits.Guilds,
+    GatewayIntentBits.GuildMessages,
+    GatewayIntentBits.MessageContent, // privileged intent – must be enabled in the Developer Portal
+    GatewayIntentBits.GuildMembers,   // needed to call member.timeout()
+  ],
+  partials: [Partials.Message, Partials.Channel],
+});
+
+// ── Event handlers ─────────────────────────────────────────────────────────────
+
+client.once('ready', () => {
+  console.log(`[spam-nuker] Logged in as ${client.user.tag}`);
+});
+
+client.on('messageCreate', async (message) => {
+  // Ignore bots, DMs, and system messages
+  if (message.author.bot) return;
+  if (!message.guild) return;
+  if (message.system) return;
+
+  const opts = {
+    timeoutMs,
+    logChannelId: LOG_CHANNEL_ID,
+  };
+
+  // Run both checks concurrently; stop after the first one fires so we don't
+  // double-timeout the same user for the same message.
+  const [imageFlagged] = await Promise.all([
+    handleImageSpam(message, {
+      ...opts,
+      threshold: IMAGE_THRESHOLD,
+      window: IMAGE_WINDOW,
+    }),
+  ]);
+
+  if (!imageFlagged) {
+    await handleCrossChannelSpam(message, {
+      ...opts,
+      threshold: CROSS_CHANNEL_THRESHOLD,
+      window: CROSS_CHANNEL_WINDOW,
+    });
+  }
+});
+
+// ── Start ──────────────────────────────────────────────────────────────────────
+
+client.login(TOKEN).catch((err) => {
+  console.error('[spam-nuker] Failed to log in:', err.message);
+  process.exit(1);
+});
