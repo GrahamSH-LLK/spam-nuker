@@ -29,7 +29,7 @@ function isExternalImageUrl(url, guildId = null) {
     if (!guildId) return false;
 
     const parts = pathname.split('/').filter(Boolean);
-    if (parts[0] !== 'attachments' || parts.length < 2) return false;
+    if (parts[0] !== 'attachments' || parts.length < 3) return false;
 
     const serverId = parts[1];
     if (!/^\d+$/.test(serverId)) return false;
