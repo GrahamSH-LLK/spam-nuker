@@ -15,7 +15,8 @@ const DISCORD_DOMAINS = new Set([
 /**
  * Returns true when `url` should count as "external" for image-spam checks.
  * Discord CDN URLs are usually internal, except when they include an
- * `/attachments/<serverId>/...` path where `serverId` does not match `guildId`.
+ * `/attachments/<serverId>/...` path where `serverId` does not match `guildId`
+ * or the attachment path is malformed/unparseable.
  * @param {string} url
  * @param {string|null} [guildId]
  * @returns {boolean}
@@ -29,10 +30,11 @@ function isExternalImageUrl(url, guildId = null) {
     if (!guildId) return false;
 
     const parts = pathname.split('/').filter(Boolean);
-    if (parts[0] !== 'attachments' || parts.length < 3) return false;
+    if (parts[0] !== 'attachments') return false;
+    if (parts.length < 3) return true;
 
     const serverId = parts[1];
-    if (!/^\d+$/.test(serverId)) return false;
+    if (!/^\d+$/.test(serverId)) return true;
 
     return serverId !== String(guildId);
   } catch {

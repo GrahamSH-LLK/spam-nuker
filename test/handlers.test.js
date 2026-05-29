@@ -19,9 +19,9 @@ test('isExternalImageUrl – Discord CDN attachment from different server is ext
   assert.equal(isExternalImageUrl('https://cdn.discordapp.com/attachments/123/456/img.png', '123'), false);
 });
 
-test('isExternalImageUrl – ignores malformed/non-attachment Discord CDN paths', () => {
-  assert.equal(isExternalImageUrl('https://cdn.discordapp.com/attachments/abc/456/img.png', '999'), false);
-  assert.equal(isExternalImageUrl('https://cdn.discordapp.com/attachments/123/', '999'), false);
+test('isExternalImageUrl – flags malformed attachment paths as external', () => {
+  assert.equal(isExternalImageUrl('https://cdn.discordapp.com/attachments/abc/456/img.png', '999'), true);
+  assert.equal(isExternalImageUrl('https://cdn.discordapp.com/attachments/123/', '999'), true);
   assert.equal(isExternalImageUrl('https://cdn.discordapp.com/avatars/123/hash.png', '999'), false);
 });
 
