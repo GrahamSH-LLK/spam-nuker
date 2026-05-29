@@ -13,14 +13,28 @@ const DISCORD_DOMAINS = new Set([
 ]);
 
 /**
- * Returns true when the hostname of `url` is not a Discord-owned domain.
+ * Returns true when `url` should count as "external" for image-spam checks.
+ * Discord CDN URLs are usually internal, except when they include an
+ * `/attachments/<serverId>/...` path where `serverId` does not match `guildId`.
  * @param {string} url
+ * @param {string|null} [guildId]
  * @returns {boolean}
  */
-function isExternalImageUrl(url) {
+function isExternalImageUrl(url, guildId = null) {
   try {
-    const { hostname } = new URL(url);
-    return !DISCORD_DOMAINS.has(hostname);
+    const parsed = new URL(url);
+    const { hostname, pathname } = parsed;
+    if (!DISCORD_DOMAINS.has(hostname)) return true;
+
+    if (!guildId) return false;
+
+    const parts = pathname.split('/').filter(Boolean);
+    if (parts[0] !== 'attachments' || parts.length < 2) return false;
+
+    const serverId = parts[1];
+    if (!/^\d+$/.test(serverId)) return false;
+
+    return serverId !== String(guildId);
   } catch {
     return false;
   }
@@ -36,20 +50,21 @@ function isExternalImageUrl(url) {
  */
 function countExternalImages(message) {
   let count = 0;
+  const guildId = message.guild?.id ?? null;
 
   for (const attachment of message.attachments.values()) {
     if (
       attachment.contentType &&
       attachment.contentType.startsWith('image/') &&
-      isExternalImageUrl(attachment.url)
+      isExternalImageUrl(attachment.url, guildId)
     ) {
       count++;
     }
   }
 
   for (const embed of message.embeds) {
-    if (embed.image && isExternalImageUrl(embed.image.url)) count++;
-    if (embed.thumbnail && isExternalImageUrl(embed.thumbnail.url)) count++;
+    if (embed.image && isExternalImageUrl(embed.image.url, guildId)) count++;
+    if (embed.thumbnail && isExternalImageUrl(embed.thumbnail.url, guildId)) count++;
   }
 
   return count;

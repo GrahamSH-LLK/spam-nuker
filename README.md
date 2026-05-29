@@ -63,7 +63,7 @@ Grant the bot at least the following permissions in your server:
 
 ### External-image spam
 
-Each time a user posts a message the bot counts attachments with an `image/*` content type **and** embed images/thumbnails whose hostname is **not** a Discord-owned domain (`cdn.discordapp.com`, `media.discordapp.net`, etc.).  Those counts are accumulated in a Redis sorted-set per `(guild, user)` over the `IMAGE_WINDOW` second sliding window.  When the total reaches `IMAGE_THRESHOLD` the user is timed out.
+Each time a user posts a message the bot counts attachments with an `image/*` content type **and** embed images/thumbnails whose hostname is **not** a Discord-owned domain (`cdn.discordapp.com`, `media.discordapp.net`, etc.).  For Discord CDN attachment URLs, it also treats them as suspicious when the URL contains an `/attachments/<serverId>/...` path and `<serverId>` does not match the current server. Those counts are accumulated in a Redis sorted-set per `(guild, user)` over the `IMAGE_WINDOW` second sliding window.  When the total reaches `IMAGE_THRESHOLD` the user is timed out.
 
 ### Cross-channel duplicate spam
 

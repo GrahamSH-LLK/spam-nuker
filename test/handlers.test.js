@@ -14,6 +14,11 @@ test('isExternalImageUrl – Discord CDN URLs are NOT external', () => {
   assert.equal(isExternalImageUrl('https://discord.com/assets/logo.png'), false);
 });
 
+test('isExternalImageUrl – Discord CDN attachment from different server is external', () => {
+  assert.equal(isExternalImageUrl('https://cdn.discordapp.com/attachments/123/456/img.png', '999'), true);
+  assert.equal(isExternalImageUrl('https://cdn.discordapp.com/attachments/123/456/img.png', '123'), false);
+});
+
 test('isExternalImageUrl – External URLs are external', () => {
   assert.equal(isExternalImageUrl('https://i.imgur.com/abc.png'), true);
   assert.equal(isExternalImageUrl('https://example.com/photo.jpg'), true);
@@ -34,6 +39,7 @@ function makeMessage({ attachments = [], embeds = [] } = {}) {
   return {
     attachments: new Map(attachments.map((a, i) => [String(i), a])),
     embeds,
+    guild: { id: '1' },
   };
 }
 
@@ -54,6 +60,15 @@ test('countExternalImages – ignores Discord CDN attachments', () => {
     ],
   });
   assert.equal(countExternalImages(msg), 0);
+});
+
+test('countExternalImages – counts Discord CDN attachments from other servers', () => {
+  const msg = makeMessage({
+    attachments: [
+      { contentType: 'image/png', url: 'https://cdn.discordapp.com/attachments/999/2/img.png' },
+    ],
+  });
+  assert.equal(countExternalImages(msg), 1);
 });
 
 test('countExternalImages – ignores non-image attachments', () => {
