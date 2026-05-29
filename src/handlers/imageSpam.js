@@ -1,5 +1,6 @@
 'use strict';
 
+const crypto = require('crypto');
 const { getRedisClient } = require('../redis');
 
 // Domains that belong to Discord's own CDN – images from these are NOT "external"
@@ -80,7 +81,7 @@ async function handleImageSpam(message, { threshold, window, timeoutMs, logChann
   // Add `externalCount` entries with the current timestamp as both score and member
   // Use a unique member to avoid deduplication: `<timestamp>:<random>`
   for (let i = 0; i < externalCount; i++) {
-    pipeline.zadd(key, now, `${now}:${i}:${Math.random().toString(36).slice(2)}`);
+    pipeline.zadd(key, now, `${now}:${i}:${crypto.randomBytes(8).toString('hex')}`);
   }
   // Remove entries older than the window
   pipeline.zremrangebyscore(key, '-inf', now - window * 1000);

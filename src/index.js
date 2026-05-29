@@ -52,15 +52,13 @@ client.on('messageCreate', async (message) => {
     logChannelId: LOG_CHANNEL_ID,
   };
 
-  // Run both checks concurrently; stop after the first one fires so we don't
-  // double-timeout the same user for the same message.
-  const [imageFlagged] = await Promise.all([
-    handleImageSpam(message, {
-      ...opts,
-      threshold: IMAGE_THRESHOLD,
-      window: IMAGE_WINDOW,
-    }),
-  ]);
+  // Run the image-spam check first; only run cross-channel check if no action
+  // was taken (avoids double-timing-out the user for a single message).
+  const imageFlagged = await handleImageSpam(message, {
+    ...opts,
+    threshold: IMAGE_THRESHOLD,
+    window: IMAGE_WINDOW,
+  });
 
   if (!imageFlagged) {
     await handleCrossChannelSpam(message, {
