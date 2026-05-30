@@ -4,7 +4,7 @@ import { fromRgba } from '@stabilityprotocol.com/phash';
 import sharp from 'sharp';
 
 import { getRedisClient } from '../redis.js';
-
+import type {Attachment, Message} from 'discord.js';
 // Domains that belong to Discord's own CDN – images from these are NOT "external"
 const DISCORD_DOMAINS = new Set([
   'cdn.discordapp.com',
@@ -15,45 +15,8 @@ const DISCORD_DOMAINS = new Set([
 ]);
 const DEFAULT_PHASH_DISTANCE = 6;
 
-/**
- * Returns true when `url` should count as "external" for image-spam checks.
- * Discord CDN URLs are treated as internal; CDN path IDs are not reliable
- * server identifiers.
- * @param {string} url
- * @returns {boolean}
- */
-export function isExternalImageUrl(url) {
-  try {
-    const parsed = new URL(url);
-    return !DISCORD_DOMAINS.has(parsed.hostname);
-  } catch {
-    return false;
-  }
-}
 
-/**
- * Counts the number of external-domain images contained in a message
- * (attachments whose content type starts with "image/" and embed thumbnails /
- * images whose URLs resolve to an external host).
- *
- * @param {import('discord.js').Message} message
- * @returns {number}
- */
-export function countExternalImages(message) {
-  let count = 0;
-  for (const attachment of message.attachments.values()) {
-    if (isImageAttachment(attachment) && isExternalImageUrl(attachment.url)) {
-      count++;
-    }
-  }
 
-  for (const embed of message.embeds) {
-    if (embed.image && isExternalImageUrl(embed.image.url)) count++;
-    if (embed.thumbnail && isExternalImageUrl(embed.thumbnail.url)) count++;
-  }
-
-  return count;
-}
 
 /**
  * Returns true when an attachment is an image.
@@ -61,8 +24,25 @@ export function countExternalImages(message) {
  * @param {import('discord.js').Attachment} attachment
  * @returns {boolean}
  */
-export function isImageAttachment(attachment) {
+export function isImageAttachment(attachment:Attachment) {
   return Boolean(attachment.contentType && attachment.contentType.startsWith('image/'));
+}
+
+
+/**
+ * Returns true when a URL points to an external (non-Discord) image.
+ *
+ * @param {string} url
+ * @returns {boolean}
+ */
+export function isExternalImageUrl(url: string) {
+  try {
+    if (!url) return false;
+    const u = new URL(url);
+    return !DISCORD_DOMAINS.has(u.hostname);
+  } catch (err) {
+    return false;
+  }
 }
 
 /**
@@ -72,8 +52,20 @@ export function isImageAttachment(attachment) {
  * @param {import('discord.js').Message} message
  * @returns {number}
  */
-export function countImages(message) {
+export function countImages(message: Message) {
   return getImageUrls(message).length;
+}
+
+
+/**
+ * Counts only images hosted on external (non-Discord) domains.
+ *
+ * @param {import('discord.js').Message} message
+ * @returns {number}
+ */
+export function countExternalImages(message: Message) {
+  const urls = getImageUrls(message);
+  return urls.filter((u) => isExternalImageUrl(u)).length;
 }
 
 /**
@@ -82,7 +74,7 @@ export function countImages(message) {
  * @param {import('discord.js').Message} message
  * @returns {string[]}
  */
-export function getImageUrls(message) {
+export function getImageUrls(message: Message) {
   const urls = [];
 
   for (const attachment of message.attachments.values()) {
@@ -104,7 +96,7 @@ export function getImageUrls(message) {
  * @param {string} b
  * @returns {number}
  */
-export function hammingDistance(a, b) {
+export function hammingDistance(a: string, b: string) {
   let distance = Math.abs(a.length - b.length) * 4;
 
   for (let i = 0; i < Math.min(a.length, b.length); i++) {
@@ -122,7 +114,7 @@ export function hammingDistance(a, b) {
  * @param {string} url
  * @returns {Promise<string|null>}
  */
-export async function hashImageUrl(url) {
+export async function hashImageUrl(url: string) {
   try {
     const response = await fetch(url);
     if (!response.ok) return null;
@@ -133,60 +125,13 @@ export async function hashImageUrl(url) {
       .raw()
       .toBuffer({ resolveWithObject: true });
 
-    return fromRgba(data, info.width, info.height);
-  } catch (err) {
+    return fromRgba(Uint8ClampedArray.from(data), info.width, info.height);
+  } catch (err: any) {
     console.warn(`[spam-nuker] Failed to hash image ${url}:`, err.message);
     return null;
   }
 }
 
-/**
- * Checks whether the author of `message` has exceeded the external-image
- * threshold in the configured sliding window.  If they have, times them out
- * and posts an alert.
- *
- * @param {import('discord.js').Message} message
- * @param {object} options
- * @param {number} options.threshold  Max external images allowed in the window
- * @param {number} options.window     Window length in seconds
- * @param {number} options.timeoutMs  Timeout duration in milliseconds
- * @param {string|null} options.logChannelId  Optional alert channel ID
- * @returns {Promise<boolean>} true if the user was timed out
- */
-export async function handleImageSpam(message, { threshold, window, timeoutMs, logChannelId }) {
-  const externalCount = countExternalImages(message);
-  if (externalCount === 0) return false;
-
-  const redis = getRedisClient();
-  const key = `img_spam:${message.guild.id}:${message.author.id}`;
-  const now = Date.now();
-
-  // Each entry is a timestamp stored in a sorted set; score = timestamp (ms)
-  const pipeline = redis.pipeline();
-  // Add `externalCount` entries with the current timestamp as both score and member
-  // Use a unique member to avoid deduplication: `<timestamp>:<random>`
-  for (let i = 0; i < externalCount; i++) {
-    pipeline.zadd(key, now, `${now}:${i}:${crypto.randomBytes(8).toString('hex')}`);
-  }
-  // Remove entries older than the window
-  pipeline.zremrangebyscore(key, '-inf', now - window * 1000);
-  // Count remaining entries
-  pipeline.zcard(key);
-  // Refresh TTL so the key expires naturally
-  pipeline.expire(key, window * 2);
-  const results = await pipeline.exec();
-
-  const total = results[results.length - 2][1]; // zcard result
-
-  if (total < threshold) return false;
-
-  // Delete the tracking key so the user gets a clean slate after the timeout
-  await redis.del(key);
-
-  return applyTimeout(message, 'image-spam', timeoutMs, logChannelId, {
-    detail: `Sent ${total} external image(s) within ${window}s`,
-  });
-}
 
 /**
  * Checks whether the author of `message` has sent the same image across
@@ -203,7 +148,7 @@ export async function handleImageSpam(message, { threshold, window, timeoutMs, l
  * @returns {Promise<boolean>} true if the user was timed out
  */
 export async function handleCrossChannelImageSpam(
-  message,
+  message: Message,
   {
     imageThreshold,
     channelThreshold,
@@ -211,16 +156,23 @@ export async function handleCrossChannelImageSpam(
     window,
     timeoutMs,
     logChannelId,
+  }: {
+    imageThreshold: number;
+    channelThreshold: number;
+    maxDistance?: number;
+    window: number;
+    timeoutMs: number;
+    logChannelId: string | null;
   },
 ) {
   const imageUrls = getImageUrls(message);
   if (imageUrls.length === 0) return false;
 
-  const hashes = (await Promise.all(imageUrls.map((url) => hashImageUrl(url)))).filter(Boolean);
+  const hashes = (await Promise.all(imageUrls.map((url) => hashImageUrl(url)))).filter((x): x is string => !!x && x !== null);
   if (hashes.length === 0) return false;
 
   const redis = getRedisClient();
-  const key = `xch_img_spam:${message.guild.id}:${message.author.id}`;
+  const key = `xch_img_spam:${message.guild?.id}:${message.author.id}`;
   const now = Date.now();
 
   const pipeline = redis.pipeline();
@@ -235,8 +187,10 @@ export async function handleCrossChannelImageSpam(
   pipeline.zrange(key, 0, -1);
   pipeline.expire(key, window * 2);
   const results = await pipeline.exec();
+  if (!results) return false;
 
-  const members = results[results.length - 2][1];
+  const members: string[] = results[results.length - 2][1] as string[]; // zrange result
+  if (!members) return false;
   const entries = members.map((member) => {
     const [channelId, hash] = member.split(':', 2);
     return { channelId, hash };
@@ -270,18 +224,18 @@ export async function handleCrossChannelImageSpam(
  * @param {{detail?: string}} [extra]
  * @returns {Promise<boolean>}
  */
-export async function applyTimeout(message, reason, timeoutMs, logChannelId, extra = {}) {
+export async function applyTimeout(message: Message, reason: string, timeoutMs: number, logChannelId: string | null, extra: { detail?: string } = {}) {
   const member = message.member;
   if (!member || !member.moderatable) return false;
 
   try {
     await member.timeout(timeoutMs, `[spam-nuker] ${reason}: ${extra.detail ?? ''}`);
     console.log(
-      `[spam-nuker] Timed out ${message.author.tag} (${message.author.id}) in ${message.guild.name} — reason: ${reason}`,
+      `[spam-nuker] Timed out ${message.author.tag} (${message.author.id}) in ${message?.guild?.name} — reason: ${reason}`,
     );
 
     if (logChannelId) {
-      const logChannel = message.guild.channels.cache.get(logChannelId);
+      const logChannel = message.guild?.channels.cache.get(logChannelId);
       if (logChannel && logChannel.isTextBased()) {
         await logChannel.send(
           `⚠️ **Spam detected** | User: <@${message.author.id}> (\`${message.author.tag}\`) | ` +
@@ -291,7 +245,7 @@ export async function applyTimeout(message, reason, timeoutMs, logChannelId, ext
       }
     }
     return true;
-  } catch (err) {
+  } catch (err: any) {
     console.error(`[spam-nuker] Failed to timeout ${message.author.tag}:`, err.message);
     return false;
   }

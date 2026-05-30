@@ -1,8 +1,8 @@
 import 'dotenv/config';
 
 import { Client, GatewayIntentBits, Partials } from 'discord.js';
-import { handleCrossChannelImageSpam, handleImageSpam } from './handlers/imageSpam.js';
-import { handleCrossChannelSpam } from './handlers/crossChannelSpam.js';
+import { handleCrossChannelImageSpam, handleImageSpam } from './handlers/imageSpam';
+import { handleCrossChannelSpam } from './handlers/crossChannelSpam';
 
 // ── Configuration ─────────────────────────────────────────────────────────────
 

@@ -8,8 +8,8 @@ import {
   hammingDistance,
   hashImageUrl,
   isExternalImageUrl,
-} from '../src/handlers/imageSpam.js';
-import { hashContent } from '../src/handlers/crossChannelSpam.js';
+} from '../handlers/imageSpam.js';
+import { hashContent } from '../handlers/crossChannelSpam.js';
 
 // ── isExternalImageUrl ─────────────────────────────────────────────────────────
 
@@ -46,7 +46,7 @@ function makeMessage({ attachments = [], embeds = [] } = {}) {
     attachments: new Map(attachments.map((a, i) => [String(i), a])),
     embeds,
     guild: { id: '1' },
-  };
+  } as any;
 }
 
 test('countExternalImages – counts image attachments from external domains', () => {

@@ -1,10 +1,9 @@
-import Redis from 'ioredis';
-
-let client;
+import {Redis} from 'ioredis';
+import type { Redis as RedisType } from 'ioredis';
+let client: RedisType | undefined;
 
 /**
  * Returns a shared Redis client, creating it on the first call.
- * @returns {Redis}
  */
 export function getRedisClient() {
   if (!client) {
@@ -13,7 +12,7 @@ export function getRedisClient() {
       maxRetriesPerRequest: 3,
     });
 
-    client.on('error', (err) => {
+    client.on('error', (err: Error) => {
       console.error('[Redis] Connection error:', err.message);
     });
   }
