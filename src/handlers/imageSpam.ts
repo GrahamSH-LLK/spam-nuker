@@ -84,6 +84,40 @@ export async function hashImageUrl(url: string) {
 }
 
 /**
+ * Try to delete messages given channel/message id pairs.
+ * @param {import('discord.js').Guild | null | undefined} guild
+ * @param {{channelId: string, messageId: string}[]} entries
+ */
+export async function deleteMessages(guild: any, entries: { channelId: string; messageId: string }[]) {
+  if (!guild) return;
+
+  // dedupe by channel+message
+  const seen = new Set();
+  for (const { channelId, messageId } of entries) {
+    const key = `${channelId}:${messageId}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+
+    try {
+      let channel = guild.channels.cache.get(channelId);
+      if (!channel) {
+        channel = await guild.channels.fetch(channelId).catch(() => null);
+      }
+      if (!channel || !channel.isTextBased || !channel.isTextBased()) continue;
+
+      const fetched = await channel.messages.fetch(messageId).catch(() => null);
+      if (fetched) {
+        await fetched.delete().catch((err: any) => {
+          console.warn(`[spam-nuker] Failed to delete message ${messageId} in ${channelId}:`, err?.message ?? err);
+        });
+      }
+    } catch (err: any) {
+      console.warn("[spam-nuker] deleteMessages error:", err?.message ?? err);
+    }
+  }
+}
+
+/**
  * Checks whether the author of `message` has sent the same image across
  * multiple channels within the configured sliding window.
  *
@@ -132,7 +166,7 @@ export async function handleCrossChannelImageSpam(
     pipeline.zadd(
       key,
       now,
-      `${message.channelId}:${hashes[i]}:${now}:${i}:${crypto.randomBytes(8).toString("hex")}`,
+      `${message.channelId}:${message.id}:${hashes[i]}:${now}:${i}:${crypto.randomBytes(8).toString("hex")}`,
     );
   }
   pipeline.zremrangebyscore(key, "-inf", now - window * 1000);
@@ -144,8 +178,11 @@ export async function handleCrossChannelImageSpam(
   const members: string[] = results[results.length - 2][1] as string[]; // zrange result
   if (!members) return false;
   const entries = members.map((member) => {
-    const [channelId, hash] = member.split(":", 2);
-    return { channelId, hash };
+    const parts = member.split(":");
+    const channelId = parts[0];
+    const messageId = parts[1];
+    const hash = parts[2];
+    return { channelId, messageId, hash };
   });
 
   for (const hash of hashes) {
@@ -160,6 +197,16 @@ export async function handleCrossChannelImageSpam(
       distinctChannels >= channelThreshold
     ) {
       await redis.del(key);
+
+      // delete matching messages including the first ones (best-effort)
+      try {
+        await deleteMessages(message.guild, matches.map((m) => ({
+          channelId: m.channelId,
+          messageId: m.messageId,
+        })));
+      } catch (err: any) {
+        console.warn("[spam-nuker] Failed to delete some messages:", err?.message ?? err);
+      }
 
       return applyTimeout(
         message,

@@ -1,7 +1,7 @@
 import crypto from "node:crypto";
 
 import { getRedisClient } from "../redis.js";
-import { applyTimeout } from "./imageSpam.js";
+import { applyTimeout, deleteMessages } from "./imageSpam.js";
 
 /**
  * Creates a short, stable hash of the message content so we can use it as a
@@ -33,18 +33,34 @@ export async function handleCrossChannelSpam(
   console.log(msgHash);
 
   const pipeline = redis.pipeline();
-  pipeline.zadd(key, now, channelId);
+  pipeline.zadd(key, now, `${channelId}:${message.id}`);
   pipeline.zremrangebyscore(key, "-inf", now - window * 1000);
-  pipeline.zcard(key);
+  pipeline.zrange(key, 0, -1);
   pipeline.expire(key, window * 2);
   const results = await pipeline.exec();
-  const distinctChannels = results?.[results.length - 2]?.[1] ?? 0; // zcard result
+  const members = (results?.[results.length - 2]?.[1] as string[]) ?? [];
 
+  if (members.length === 0) return false;
+
+  const entries = members.map((m) => {
+    const [chan, msgId] = (m as string).split(":", 2);
+    return { channelId: chan, messageId: msgId };
+  });
+
+  const distinctChannels = new Set(entries.map((e) => e.channelId)).size;
   if (distinctChannels < threshold) return false;
 
   await redis.del(key);
+
+  // try to delete matching all spam messages in the chain
+  try {
+    await deleteMessages(message.guild, entries);
+  } catch (err: any) {
+    console.warn("[spam-nuker] Failed to delete some messages:", err?.message ?? err);
+  }
 
   return applyTimeout(message, "cross-channel-spam", timeoutMs, logChannelId, {
     detail: `Sent identical message in ${distinctChannels} channel(s) within ${window}s`,
   });
 }
+
