@@ -1,10 +1,15 @@
-'use strict';
+import { test } from 'node:test';
+import assert from 'node:assert/strict';
 
-const { test } = require('node:test');
-const assert = require('node:assert/strict');
-
-const { isExternalImageUrl, countExternalImages } = require('../src/handlers/imageSpam');
-const { hashContent } = require('../src/handlers/crossChannelSpam');
+import {
+  countExternalImages,
+  countImages,
+  getImageUrls,
+  hammingDistance,
+  hashImageUrl,
+  isExternalImageUrl,
+} from '../src/handlers/imageSpam.js';
+import { hashContent } from '../src/handlers/crossChannelSpam.js';
 
 // ── isExternalImageUrl ─────────────────────────────────────────────────────────
 
@@ -14,16 +19,10 @@ test('isExternalImageUrl – Discord CDN URLs are NOT external', () => {
   assert.equal(isExternalImageUrl('https://discord.com/assets/logo.png'), false);
 });
 
-test('isExternalImageUrl – Discord CDN attachment from different server is external', () => {
-  assert.equal(isExternalImageUrl('https://cdn.discordapp.com/attachments/123/456/img.png', '999'), true);
-  assert.equal(isExternalImageUrl('https://cdn.discordapp.com/attachments/123/456/img.png', '123'), false);
-});
-
-test('isExternalImageUrl – flags malformed attachment paths as external', () => {
-  assert.equal(isExternalImageUrl('https://cdn.discordapp.com/attachments/abc/456/img.png', '999'), true);
-  assert.equal(isExternalImageUrl('https://cdn.discordapp.com/attachments/123/', '999'), true);
-  assert.equal(isExternalImageUrl('https://cdn.discordapp.com/avatars/123/hash.png', '999'), false);
-  assert.equal(isExternalImageUrl('https://cdn.discordapp.com/avatars/123/hash.png', null), false);
+test('isExternalImageUrl – Discord CDN path IDs are ignored', () => {
+  assert.equal(isExternalImageUrl('https://cdn.discordapp.com/attachments/123/456/img.png'), false);
+  assert.equal(isExternalImageUrl('https://cdn.discordapp.com/attachments/999/456/img.png'), false);
+  assert.equal(isExternalImageUrl('https://cdn.discordapp.com/attachments/abc/456/img.png'), false);
 });
 
 test('isExternalImageUrl – External URLs are external', () => {
@@ -69,13 +68,13 @@ test('countExternalImages – ignores Discord CDN attachments', () => {
   assert.equal(countExternalImages(msg), 0);
 });
 
-test('countExternalImages – counts Discord CDN attachments from other servers', () => {
+test('countExternalImages – ignores Discord CDN attachments regardless of path IDs', () => {
   const msg = makeMessage({
     attachments: [
       { contentType: 'image/png', url: 'https://cdn.discordapp.com/attachments/999/2/img.png' },
     ],
   });
-  assert.equal(countExternalImages(msg), 1);
+  assert.equal(countExternalImages(msg), 0);
 });
 
 test('countExternalImages – ignores non-image attachments', () => {
@@ -118,6 +117,69 @@ test('countExternalImages – mixed attachments and embeds', () => {
     ],
   });
   assert.equal(countExternalImages(msg), 2);
+});
+
+// ── countImages ────────────────────────────────────────────────────────────────
+
+test('countImages – counts internal and external images', () => {
+  const msg = makeMessage({
+    attachments: [
+      { contentType: 'image/png', url: 'https://cdn.discordapp.com/attachments/1/2/img.png' },
+      { contentType: 'image/jpeg', url: 'https://example.com/b.jpg' },
+      { contentType: 'application/pdf', url: 'https://example.com/doc.pdf' },
+    ],
+    embeds: [
+      { image: { url: 'https://cdn.discordapp.com/embed.png' }, thumbnail: null },
+      { image: null, thumbnail: { url: 'https://example.com/thumb.jpg' } },
+    ],
+  });
+  assert.equal(countImages(msg), 4);
+});
+
+test('countImages – ignores messages without images', () => {
+  const msg = makeMessage({
+    attachments: [
+      { contentType: 'video/mp4', url: 'https://example.com/video.mp4' },
+    ],
+    embeds: [],
+  });
+  assert.equal(countImages(msg), 0);
+});
+
+test('getImageUrls – returns attachment and embed image URLs', () => {
+  const msg = makeMessage({
+    attachments: [
+      { contentType: 'image/png', url: 'https://cdn.discordapp.com/attachments/1/2/img.png' },
+      { contentType: 'video/mp4', url: 'https://example.com/video.mp4' },
+    ],
+    embeds: [
+      { image: { url: 'https://example.com/image.jpg' }, thumbnail: null },
+      { image: null, thumbnail: { url: 'https://example.com/thumb.jpg' } },
+    ],
+  });
+
+  assert.deepEqual(getImageUrls(msg), [
+    'https://cdn.discordapp.com/attachments/1/2/img.png',
+    'https://example.com/image.jpg',
+    'https://example.com/thumb.jpg',
+  ]);
+});
+
+// ── hammingDistance ───────────────────────────────────────────────────────────
+
+test('hammingDistance – counts differing bits in hex hashes', () => {
+  assert.equal(hammingDistance('0', '0'), 0);
+  assert.equal(hammingDistance('0', 'f'), 4);
+  assert.equal(hammingDistance('a0', 'af'), 4);
+  assert.equal(hammingDistance('ffff', 'fff0'), 4);
+});
+
+test('hashImageUrl – hashes decoded image pixels', async () => {
+  const hash = await hashImageUrl(
+    'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+/p9sAAAAASUVORK5CYII=',
+  );
+
+  assert.match(hash, /^[0-9a-f]{16}$/);
 });
 
 // ── hashContent ────────────────────────────────────────────────────────────────

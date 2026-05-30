@@ -1,10 +1,8 @@
-'use strict';
+import 'dotenv/config';
 
-require('dotenv').config();
-
-const { Client, GatewayIntentBits, Partials } = require('discord.js');
-const { handleImageSpam } = require('./handlers/imageSpam');
-const { handleCrossChannelSpam } = require('./handlers/crossChannelSpam');
+import { Client, GatewayIntentBits, Partials } from 'discord.js';
+import { handleCrossChannelImageSpam, handleImageSpam } from './handlers/imageSpam.js';
+import { handleCrossChannelSpam } from './handlers/crossChannelSpam.js';
 
 // ── Configuration ─────────────────────────────────────────────────────────────
 
@@ -17,6 +15,16 @@ if (!TOKEN) {
 const TIMEOUT_DURATION = parseInt(process.env.TIMEOUT_DURATION ?? '600', 10);
 const IMAGE_THRESHOLD = parseInt(process.env.IMAGE_THRESHOLD ?? '3', 10);
 const IMAGE_WINDOW = parseInt(process.env.IMAGE_WINDOW ?? '60', 10);
+const CROSS_CHANNEL_IMAGE_THRESHOLD = parseInt(process.env.CROSS_CHANNEL_IMAGE_THRESHOLD ?? '2', 10);
+const CROSS_CHANNEL_IMAGE_CHANNEL_THRESHOLD = parseInt(
+  process.env.CROSS_CHANNEL_IMAGE_CHANNEL_THRESHOLD ?? '2',
+  10,
+);
+const CROSS_CHANNEL_IMAGE_MAX_DISTANCE = parseInt(
+  process.env.CROSS_CHANNEL_IMAGE_MAX_DISTANCE ?? '6',
+  10,
+);
+const CROSS_CHANNEL_IMAGE_WINDOW = parseInt(process.env.CROSS_CHANNEL_IMAGE_WINDOW ?? '60', 10);
 const CROSS_CHANNEL_THRESHOLD = parseInt(process.env.CROSS_CHANNEL_THRESHOLD ?? '3', 10);
 const CROSS_CHANNEL_WINDOW = parseInt(process.env.CROSS_CHANNEL_WINDOW ?? '60', 10);
 const LOG_CHANNEL_ID = process.env.LOG_CHANNEL_ID || null;
@@ -46,7 +54,7 @@ client.on('messageCreate', async (message) => {
   if (message.author.bot) return;
   if (!message.guild) return;
   if (message.system) return;
-
+  console.log('hello')
   const opts = {
     timeoutMs,
     logChannelId: LOG_CHANNEL_ID,
@@ -61,6 +69,16 @@ client.on('messageCreate', async (message) => {
   });
 
   if (!imageFlagged) {
+    const crossChannelImageFlagged = await handleCrossChannelImageSpam(message, {
+      ...opts,
+      imageThreshold: CROSS_CHANNEL_IMAGE_THRESHOLD,
+      channelThreshold: CROSS_CHANNEL_IMAGE_CHANNEL_THRESHOLD,
+      maxDistance: CROSS_CHANNEL_IMAGE_MAX_DISTANCE,
+      window: CROSS_CHANNEL_IMAGE_WINDOW,
+    });
+
+    if (crossChannelImageFlagged) return;
+
     await handleCrossChannelSpam(message, {
       ...opts,
       threshold: CROSS_CHANNEL_THRESHOLD,

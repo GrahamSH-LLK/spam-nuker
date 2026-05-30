@@ -14,14 +14,16 @@
   "keywords": [],
   "author": "",
   "license": "ISC",
-  "type": "commonjs",
+  "type": "module",
   "bugs": {
     "url": "https://github.com/GrahamSH-LLK/spam-nuker/issues"
   },
   "homepage": "https://github.com/GrahamSH-LLK/spam-nuker#readme",
   "dependencies": {
+    "@stabilityprotocol.com/phash": "^1.0.0",
     "discord.js": "^14.26.4",
     "dotenv": "^17.4.2",
-    "ioredis": "^5.11.0"
+    "ioredis": "^5.11.0",
+    "sharp": "^0.34.5"
   }
 }

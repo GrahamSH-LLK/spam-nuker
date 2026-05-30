@@ -1,8 +1,7 @@
-'use strict';
+import crypto from 'node:crypto';
 
-const crypto = require('crypto');
-const { getRedisClient } = require('../redis');
-const { applyTimeout } = require('./imageSpam');
+import { getRedisClient } from '../redis.js';
+import { applyTimeout } from './imageSpam.js';
 
 /**
  * Creates a short, stable hash of the message content so we can use it as a
@@ -11,7 +10,7 @@ const { applyTimeout } = require('./imageSpam');
  * @param {string} content
  * @returns {string} 16-character hex digest
  */
-function hashContent(content) {
+export function hashContent(content) {
   return crypto.createHash('sha256').update(content).digest('hex').slice(0, 16);
 }
 
@@ -28,16 +27,15 @@ function hashContent(content) {
  * @param {string|null} options.logChannelId  Optional alert channel ID
  * @returns {Promise<boolean>} true if the user was timed out
  */
-async function handleCrossChannelSpam(message, { threshold, window, timeoutMs, logChannelId }) {
+export async function handleCrossChannelSpam(message, { threshold, window, timeoutMs, logChannelId }) {
   const content = message.content.trim();
-  // Ignore very short or empty messages (reactions, single-word greetings, etc.)
-  if (content.length < 5) return false;
 
   const redis = getRedisClient();
   const msgHash = hashContent(content);
   const key = `xch_spam:${message.guild.id}:${message.author.id}:${msgHash}`;
   const channelId = message.channelId;
   const now = Date.now();
+  console.log(msgHash)
 
   // Store the channel ID as a member with the current timestamp as score.
   // Using the channelId as the member means each channel is only counted once
@@ -64,5 +62,3 @@ async function handleCrossChannelSpam(message, { threshold, window, timeoutMs, l
     detail: `Sent identical message in ${distinctChannels} channel(s) within ${window}s`,
   });
 }
-
-module.exports = { handleCrossChannelSpam, hashContent };
