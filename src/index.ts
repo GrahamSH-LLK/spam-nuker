@@ -64,7 +64,6 @@ client.on("messageCreate", async (message) => {
   if (message.author.bot) return;
   if (!message.guild) return;
   if (message.system) return;
-  console.log("hello");
   const opts = {
     timeoutMs,
     logChannelId: LOG_CHANNEL_ID,

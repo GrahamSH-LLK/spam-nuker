@@ -30,7 +30,6 @@ export async function handleCrossChannelSpam(
   const key = `xch_spam:${message.guild.id}:${message.author.id}:${msgHash}`;
   const channelId = message.channelId;
   const now = Date.now();
-  console.log(msgHash);
 
   const pipeline = redis.pipeline();
   pipeline.zadd(key, now, `${channelId}:${message.id}`);
