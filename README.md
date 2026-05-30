@@ -41,6 +41,17 @@ npm run dev
 npm test
 ```
 
+## Docker Compose
+
+You can run the bot and Redis together with Docker Compose:
+
+```bash
+cp .env.example .env
+docker compose up --build
+```
+
+The compose file starts a Redis container for the bot and points `REDIS_URL` at the in-network Redis service automatically. Make sure `DISCORD_TOKEN` is set in your `.env` file before starting.
+
 ---
 
 ## Discord Developer Portal
