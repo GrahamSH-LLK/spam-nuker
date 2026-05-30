@@ -1,4 +1,4 @@
-FROM node:25-alpine AS base
+FROM node:25-bookworm-slim AS base
 
 WORKDIR /app
 
@@ -17,7 +17,7 @@ COPY tsconfig.json ./
 COPY src ./src
 RUN npm run build
 
-FROM node:25-alpine AS runtime
+FROM node:25-bookworm-slim AS runtime
 
 WORKDIR /app
 
