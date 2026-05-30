@@ -1,43 +1,56 @@
-# spam-nuker
+# SpamHammer
 
-A Discord bot (discord.js v14 + Redis) that automatically **times out** and **flags** users who:
+Discord moderation bot (discord.js v14 + Redis) that automatically **flags** and **times out** users who perform image-based or cross-channel spam.
 
-1. **Send messages containing multiple images from external servers** within a configurable time window.
-2. **Send the same image across multiple channels**, using perceptual hashes instead of CDN URL IDs.
-3. **Send the same message across multiple channels** in a short period (cross-channel spam).
+Key features:
 
----
-
-## Requirements
-
-| Requirement | Version |
-|-------------|---------|
-| Node.js | ≥ 18 |
-| Redis | ≥ 6 |
+- Detects the same image uploaded across multiple channels using perceptual hashing (pHash).
+- Detects identical message content posted across multiple channels (cross-channel duplicates).
 
 ---
 
-## Setup
+## Quick start
+
+1. Clone and install dependencies
 
 ```bash
-# 1. Clone the repo and install dependencies
+git clone https://github.com/GrahamSH-LLK/spam-nuker.git
+cd spam-nuker
 npm install
-
-# 2. Copy the example env file and fill in your values
-cp .env.example .env
-
-# 3. Start the bot
-npm start
 ```
 
-### Discord Developer Portal
+2. Configure environment
 
-Enable the following **Privileged Gateway Intents** for your application:
+```bash
+cp .env.example .env
+# Edit .env and provide your DISCORD_TOKEN and other values
+```
+
+3. Build and run
+
+```bash
+npm run build   # compile TypeScript to dist/
+npm start       # run the compiled bot
+# or for development (no build step):
+npm run dev
+```
+
+4. Run tests
+
+```bash
+npm test
+```
+
+---
+
+## Discord Developer Portal
+
+Enable these Privileged Gateway Intents for your bot application:
 
 - **Server Members Intent** – required to call `member.timeout()`
 - **Message Content Intent** – required to read message content for duplicate detection
 
-Grant the bot at least the following permissions in your server:
+Required bot permissions in your guild:
 
 - `View Channel` / `Read Message History`
 - `Moderate Members` (for timeouts)
@@ -45,37 +58,52 @@ Grant the bot at least the following permissions in your server:
 
 ---
 
-## Configuration (`.env`)
+## Configuration (.env)
 
-| Variable | Default | Description |
-|----------|---------|-------------|
-| `DISCORD_TOKEN` | — | Your bot token |
-| `REDIS_URL` | `redis://localhost:6379` | Redis connection URL |
-| `TIMEOUT_DURATION` | `600` | Timeout length in **seconds** |
-| `IMAGE_THRESHOLD` | `3` | External images per window before flagging |
-| `IMAGE_WINDOW` | `60` | Sliding window in seconds for image counting |
-| `CROSS_CHANNEL_IMAGE_THRESHOLD` | `2` | Images across multiple channels before flagging |
-| `CROSS_CHANNEL_IMAGE_CHANNEL_THRESHOLD` | `2` | Distinct channels required for cross-channel image flagging |
-| `CROSS_CHANNEL_IMAGE_MAX_DISTANCE` | `6` | Maximum pHash Hamming distance for image matches |
-| `CROSS_CHANNEL_IMAGE_WINDOW` | `60` | Sliding window in seconds for cross-channel image detection |
-| `CROSS_CHANNEL_THRESHOLD` | `3` | Channels a message may appear in before flagging |
-| `CROSS_CHANNEL_WINDOW` | `60` | Sliding window in seconds for cross-channel detection |
-| `LOG_CHANNEL_ID` | *(empty)* | ID of the channel to post alerts in (optional) |
+Set the variables in your `.env` file. Common options include:
+
+| Variable                                | Default                  | Description                                                 |
+| --------------------------------------- | ------------------------ | ----------------------------------------------------------- |
+| `DISCORD_TOKEN`                         | —                        | Your bot token                                              |
+| `REDIS_URL`                             | `redis://localhost:6379` | Redis connection URL                                        |
+| `TIMEOUT_DURATION`                      | `600`                    | Timeout length in **seconds**                               |
+| `CROSS_CHANNEL_IMAGE_THRESHOLD`         | `2`                      | Images across multiple channels before flagging             |
+| `CROSS_CHANNEL_IMAGE_CHANNEL_THRESHOLD` | `2`                      | Distinct channels required for cross-channel image flagging |
+| `CROSS_CHANNEL_IMAGE_MAX_DISTANCE`      | `6`                      | Maximum pHash Hamming distance for image matches            |
+| `CROSS_CHANNEL_IMAGE_WINDOW`            | `60`                     | Sliding window for cross-channel image detection            |
+| `CROSS_CHANNEL_THRESHOLD`               | `3`                      | Channels a message may appear in before flagging            |
+| `CROSS_CHANNEL_WINDOW`                  | `60`                     | Sliding window in seconds for cross-channel detection       |
+| `LOG_CHANNEL_ID`                        | _(empty)_                | ID of the channel to post alerts in (optional)              |
 
 ---
 
-## How it works
+## How it works (overview)
 
-### External-image spam
+- Cross-channel image spam: downloads and hashes images with `@stabilityprotocol.com/phash`, stores recent pHashes in Redis, and times out users when matching pHash clusters exceed configured thresholds and span multiple channels.
 
-Each time a user posts a message the bot counts attachments with an `image/*` content type **and** embed images/thumbnails whose hostname is **not** a Discord-owned domain (`cdn.discordapp.com`, `media.discordapp.net`, etc.). Discord CDN URLs are treated as internal regardless of path IDs. Those counts are accumulated in a Redis sorted-set per `(guild, user)` over the `IMAGE_WINDOW` second sliding window. When the total reaches `IMAGE_THRESHOLD` the user is timed out.
+- Cross-channel duplicate spam: hashes message content (SHA-256 truncated) and counts distinct channels per hash. Users are timed out if the same content appears across many channels in `CROSS_CHANNEL_WINDOW` seconds.
 
-### Cross-channel image spam
+Tracking keys expire so users do not accumulate punishments over long periods.
 
-Each image attachment and embed image/thumbnail is downloaded, decoded, and hashed with `@stabilityprotocol.com/phash`. The bot stores recent pHashes in a Redis sorted-set per `(guild, user)` over the `CROSS_CHANNEL_IMAGE_WINDOW` second sliding window. Discord CDN path IDs are ignored. When a matching pHash cluster reaches `CROSS_CHANNEL_IMAGE_THRESHOLD` images and spans at least `CROSS_CHANNEL_IMAGE_CHANNEL_THRESHOLD` distinct channels, the user is timed out.
+---
 
-### Cross-channel duplicate spam
+## Development
 
-Each message's content is hashed (SHA-256, truncated to 16 hex chars) and stored in a Redis sorted-set keyed by `(guild, user, hash)`.  The member is the channel ID, so each channel only counts once per message hash.  When the same content appears in `CROSS_CHANNEL_THRESHOLD` or more distinct channels within `CROSS_CHANNEL_WINDOW` seconds, the user is timed out.
+- Build: `npm run build`
+- Run compiled: `npm start`
+- Run in dev (no build): `npm run dev`
+- Tests: `npm test` (project uses `jest`)
 
-In all cases the tracking key is deleted immediately after a timeout so the user starts fresh.
+If you add or modify types, ensure `tsc` compiles without errors.
+
+---
+
+## Contributing
+
+Contributions are welcome. Open issues for bugs or feature requests, and submit PRs for fixes. Keep changes focused and include tests when possible.
+
+---
+
+## License
+
+This project is published under the ISC license. See `package.json` for details.
