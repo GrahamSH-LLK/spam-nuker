@@ -1,7 +1,10 @@
 import "dotenv/config";
 
 import { Client, GatewayIntentBits, Partials } from "discord.js";
-import { handleCrossChannelImageSpam } from "./handlers/imageSpam.js";
+import {
+  handleCrossChannelImageSpam,
+  handleStoreImageHashesButton,
+} from "./handlers/imageSpam.js";
 import { handleCrossChannelSpam } from "./handlers/crossChannelSpam.js";
 
 // ── Configuration ─────────────────────────────────────────────────────────────
@@ -84,6 +87,26 @@ client.on("messageCreate", async (message) => {
     threshold: CROSS_CHANNEL_THRESHOLD,
     window: CROSS_CHANNEL_WINDOW,
   });
+});
+
+client.on("interactionCreate", async (interaction) => {
+  if (!interaction.isButton()) return;
+
+  try {
+    await handleStoreImageHashesButton(interaction);
+  } catch (err: any) {
+    console.error(
+      "[spam-nuker] Failed to handle button interaction:",
+      err?.message ?? err,
+    );
+
+    if (!interaction.replied && !interaction.deferred) {
+      await interaction.reply({
+        content: "Failed to store image hashes.",
+        ephemeral: true,
+      });
+    }
+  }
 });
 
 // ── Start ──────────────────────────────────────────────────────────────────────

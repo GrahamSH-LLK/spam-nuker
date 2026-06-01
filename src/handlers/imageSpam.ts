@@ -4,8 +4,28 @@ import { fromRgba } from "@stabilityprotocol.com/phash";
 import sharp from "sharp";
 
 import { getRedisClient } from "../redis.js";
-import type { Attachment, Message } from "discord.js";
+import {
+  ActionRowBuilder,
+  ButtonBuilder,
+  ButtonStyle,
+  PermissionFlagsBits,
+} from "discord.js";
+import type { Attachment, ButtonInteraction, Message } from "discord.js";
 const DEFAULT_PHASH_DISTANCE = 6;
+const STORE_IMAGE_HASH_BUTTON_PREFIX = "spam-nuker:store-img:";
+const PENDING_IMAGE_HASH_TTL_SECONDS = 7 * 24 * 60 * 60;
+
+function storedImageHashesKey(guildId: string) {
+  return `stored_img_hashes:${guildId}`;
+}
+
+function pendingImageHashesKey(token: string) {
+  return `pending_img_hashes:${token}`;
+}
+
+function uniqueHashes(hashes: string[]) {
+  return [...new Set(hashes)];
+}
 
 /**
  * Returns true when an attachment is an image.
@@ -83,6 +103,33 @@ export async function hashImageUrl(url: string) {
   }
 }
 
+export async function storeImageHashes(guildId: string, hashes: string[]) {
+  const safeHashes = uniqueHashes(hashes).filter(Boolean);
+  if (safeHashes.length === 0) return 0;
+
+  return getRedisClient().sadd(storedImageHashesKey(guildId), safeHashes);
+}
+
+export async function findStoredImageHashMatch(
+  guildId: string,
+  hashes: string[],
+  maxDistance = DEFAULT_PHASH_DISTANCE,
+) {
+  if (hashes.length === 0) return null;
+
+  const storedHashes = await getRedisClient().smembers(
+    storedImageHashesKey(guildId),
+  );
+  for (const hash of hashes) {
+    const matchedHash = storedHashes.find(
+      (storedHash) => hammingDistance(hash, storedHash) <= maxDistance,
+    );
+    if (matchedHash) return { hash, matchedHash };
+  }
+
+  return null;
+}
+
 /**
  * Try to delete messages given channel/message id pairs.
  * @param {import('discord.js').Guild | null | undefined} guild
@@ -149,6 +196,8 @@ export async function handleCrossChannelImageSpam(
     logChannelId: string | null;
   },
 ) {
+  if (!message.guild) return false;
+
   const imageUrls = getImageUrls(message);
   if (imageUrls.length === 0) return false;
 
@@ -157,8 +206,29 @@ export async function handleCrossChannelImageSpam(
   ).filter((x): x is string => !!x && x !== null);
   if (hashes.length === 0) return false;
 
+  const storedMatch = await findStoredImageHashMatch(
+    message.guild.id,
+    hashes,
+    maxDistance,
+  );
+  if (storedMatch) {
+    await deleteMessages(message.guild, [
+      { channelId: message.channelId, messageId: message.id },
+    ]);
+
+    return applyTimeout(
+      message,
+      "stored-image-hash",
+      timeoutMs,
+      logChannelId,
+      {
+        detail: `Sent image matching stored hash (pHash distance <= ${maxDistance})`,
+      },
+    );
+  }
+
   const redis = getRedisClient();
-  const key = `xch_img_spam:${message.guild?.id}:${message.author.id}`;
+  const key = `xch_img_spam:${message.guild.id}:${message.author.id}`;
   const now = Date.now();
 
   const pipeline = redis.pipeline();
@@ -217,6 +287,7 @@ export async function handleCrossChannelImageSpam(
           detail:
             `Sent matching image in ${distinctChannels} channel(s) within ${window}s ` +
             `(pHash distance <= ${maxDistance})`,
+          imageHashes: hashes,
         },
       );
     }
@@ -232,7 +303,7 @@ export async function handleCrossChannelImageSpam(
  * @param {string} reason
  * @param {number} timeoutMs
  * @param {string|null} logChannelId
- * @param {{detail?: string}} [extra]
+ * @param {{detail?: string, imageHashes?: string[]}} [extra]
  * @returns {Promise<boolean>}
  */
 export async function applyTimeout(
@@ -240,7 +311,7 @@ export async function applyTimeout(
   reason: string,
   timeoutMs: number,
   logChannelId: string | null,
-  extra: { detail?: string } = {},
+  extra: { detail?: string; imageHashes?: string[] } = {},
 ) {
   const member = message.member;
   if (!member || !member.moderatable) return false;
@@ -257,11 +328,38 @@ export async function applyTimeout(
     if (logChannelId) {
       const logChannel = message.guild?.channels.cache.get(logChannelId);
       if (logChannel && logChannel.isTextBased()) {
-        await logChannel.send(
-          `⚠️ **Spam detected** | User: <@${message.author.id}> (\`${message.author.tag}\`) | ` +
+        const components = [];
+        const imageHashes = uniqueHashes(extra.imageHashes ?? []);
+
+        if (message.guild && imageHashes.length > 0) {
+          const token = crypto.randomBytes(16).toString("hex");
+          await getRedisClient().set(
+            pendingImageHashesKey(token),
+            JSON.stringify({
+              guildId: message.guild.id,
+              hashes: imageHashes,
+            }),
+            "EX",
+            PENDING_IMAGE_HASH_TTL_SECONDS,
+          );
+
+          components.push(
+            new ActionRowBuilder<ButtonBuilder>().addComponents(
+              new ButtonBuilder()
+                .setCustomId(`${STORE_IMAGE_HASH_BUTTON_PREFIX}${token}`)
+                .setLabel("Automatically moderate all matching images in the future")
+                .setStyle(ButtonStyle.Danger),
+            ),
+          );
+        }
+
+        await logChannel.send({
+          content:
+            `⚠️ **Spam detected** | User: <@${message.author.id}> (\`${message.author.tag}\`) | ` +
             `Reason: \`${reason}\` | ${extra.detail ?? ""} | ` +
             `Timed out for ${timeoutMs / 1000}s`,
-        );
+          components,
+        });
       }
     }
     return true;
@@ -272,4 +370,79 @@ export async function applyTimeout(
     );
     return false;
   }
+}
+
+export async function handleStoreImageHashesButton(
+  interaction: ButtonInteraction,
+) {
+  if (!interaction.customId.startsWith(STORE_IMAGE_HASH_BUTTON_PREFIX)) {
+    return false;
+  }
+
+  if (!interaction.guildId) {
+    await interaction.reply({
+      content: "Image hashes can only be stored from a server log message.",
+      ephemeral: true,
+    });
+    return true;
+  }
+
+  if (
+    !interaction.memberPermissions?.has(PermissionFlagsBits.ModerateMembers)
+  ) {
+    await interaction.reply({
+      content: "You need the Moderate Members permission to store image hashes.",
+      ephemeral: true,
+    });
+    return true;
+  }
+
+  const token = interaction.customId.slice(STORE_IMAGE_HASH_BUTTON_PREFIX.length);
+  const redis = getRedisClient();
+  const pending = await redis.get(pendingImageHashesKey(token));
+  if (!pending) {
+    await interaction.reply({
+      content: "These image hashes are no longer available to store.",
+      ephemeral: true,
+    });
+    return true;
+  }
+
+  let payload: { guildId?: string; hashes?: unknown };
+  try {
+    payload = JSON.parse(pending);
+  } catch {
+    await interaction.reply({
+      content: "These image hashes could not be read.",
+      ephemeral: true,
+    });
+    return true;
+  }
+
+  if (
+    payload.guildId !== interaction.guildId ||
+    !Array.isArray(payload.hashes)
+  ) {
+    await interaction.reply({
+      content: "These image hashes do not belong to this server.",
+      ephemeral: true,
+    });
+    return true;
+  }
+
+  const hashes = payload.hashes.filter(
+    (hash): hash is string => typeof hash === "string" && hash.length > 0,
+  );
+  const added = await storeImageHashes(interaction.guildId, hashes);
+  await redis.del(pendingImageHashesKey(token));
+
+  await interaction.reply({
+    content:
+      added === 0
+        ? "Those image hashes were already stored."
+        : `Stored ${added} image hash(es). Future matching images will time out automatically.`,
+    ephemeral: true,
+  });
+
+  return true;
 }
