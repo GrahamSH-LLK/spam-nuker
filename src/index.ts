@@ -6,6 +6,11 @@ import {
   handleStoreImageHashesButton,
 } from "./handlers/imageSpam.js";
 import { handleCrossChannelSpam } from "./handlers/crossChannelSpam.js";
+import {
+  configCommand,
+  handleConfigCommand,
+} from "./handlers/configCommand.js";
+import { getGuildConfig } from "./config.js";
 
 // ── Configuration ─────────────────────────────────────────────────────────────
 
@@ -14,35 +19,6 @@ if (!TOKEN) {
   console.error("[spam-nuker] DISCORD_TOKEN is not set. Please configure .env");
   process.exit(1);
 }
-
-const TIMEOUT_DURATION = parseInt(process.env.TIMEOUT_DURATION ?? "600", 10);
-const CROSS_CHANNEL_IMAGE_THRESHOLD = parseInt(
-  process.env.CROSS_CHANNEL_IMAGE_THRESHOLD ?? "2",
-  10,
-);
-const CROSS_CHANNEL_IMAGE_CHANNEL_THRESHOLD = parseInt(
-  process.env.CROSS_CHANNEL_IMAGE_CHANNEL_THRESHOLD ?? "2",
-  10,
-);
-const CROSS_CHANNEL_IMAGE_MAX_DISTANCE = parseInt(
-  process.env.CROSS_CHANNEL_IMAGE_MAX_DISTANCE ?? "6",
-  10,
-);
-const CROSS_CHANNEL_IMAGE_WINDOW = parseInt(
-  process.env.CROSS_CHANNEL_IMAGE_WINDOW ?? "60",
-  10,
-);
-const CROSS_CHANNEL_THRESHOLD = parseInt(
-  process.env.CROSS_CHANNEL_THRESHOLD ?? "3",
-  10,
-);
-const CROSS_CHANNEL_WINDOW = parseInt(
-  process.env.CROSS_CHANNEL_WINDOW ?? "60",
-  10,
-);
-const LOG_CHANNEL_ID = process.env.LOG_CHANNEL_ID || null;
-
-const timeoutMs = TIMEOUT_DURATION * 1000;
 
 // ── Discord client ─────────────────────────────────────────────────────────────
 
@@ -58,8 +34,18 @@ const client = new Client({
 
 // ── Event handlers ─────────────────────────────────────────────────────────────
 
-client.once("ready", () => {
+client.once("ready", async () => {
   console.log(`[spam-nuker] Logged in as ${client.user?.tag}`);
+
+  try {
+    await client.application?.commands.set([configCommand.toJSON()]);
+    console.log("[spam-nuker] Registered slash commands");
+  } catch (err: any) {
+    console.error(
+      "[spam-nuker] Failed to register slash commands:",
+      err?.message ?? err,
+    );
+  }
 });
 
 client.on("messageCreate", async (message) => {
@@ -67,44 +53,54 @@ client.on("messageCreate", async (message) => {
   if (message.author.bot) return;
   if (!message.guild) return;
   if (message.system) return;
+
+  const config = await getGuildConfig(message.guild.id);
   const opts = {
-    timeoutMs,
-    logChannelId: LOG_CHANNEL_ID,
+    timeoutMs: config.timeoutDuration * 1000,
+    logChannelId: config.logChannelId,
   };
 
   const crossChannelImageFlagged = await handleCrossChannelImageSpam(message, {
     ...opts,
-    imageThreshold: CROSS_CHANNEL_IMAGE_THRESHOLD,
-    channelThreshold: CROSS_CHANNEL_IMAGE_CHANNEL_THRESHOLD,
-    maxDistance: CROSS_CHANNEL_IMAGE_MAX_DISTANCE,
-    window: CROSS_CHANNEL_IMAGE_WINDOW,
+    imageThreshold: config.imageThreshold,
+    channelThreshold: config.imageChannelThreshold,
+    maxDistance: config.imageMaxDistance,
+    window: config.imageWindow,
   });
 
   if (crossChannelImageFlagged) return;
 
   await handleCrossChannelSpam(message, {
     ...opts,
-    threshold: CROSS_CHANNEL_THRESHOLD,
-    window: CROSS_CHANNEL_WINDOW,
+    threshold: config.messageThreshold,
+    window: config.messageWindow,
   });
 });
 
 client.on("interactionCreate", async (interaction) => {
-  if (!interaction.isButton()) return;
-
   try {
-    await handleStoreImageHashesButton(interaction);
+    if (interaction.isChatInputCommand()) {
+      await handleConfigCommand(interaction);
+      return;
+    }
+
+    if (interaction.isButton()) {
+      await handleStoreImageHashesButton(interaction);
+    }
   } catch (err: any) {
     console.error(
-      "[spam-nuker] Failed to handle button interaction:",
+      "[spam-nuker] Failed to handle interaction:",
       err?.message ?? err,
     );
 
-    if (!interaction.replied && !interaction.deferred) {
-      await interaction.reply({
-        content: "Failed to store image hashes.",
-        ephemeral: true,
-      });
+    if (
+      interaction.isRepliable() &&
+      !interaction.replied &&
+      !interaction.deferred
+    ) {
+      await interaction
+        .reply({ content: "Something went wrong.", ephemeral: true })
+        .catch(() => {});
     }
   }
 });

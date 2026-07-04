@@ -67,11 +67,26 @@ Required bot permissions in your guild:
 - `Moderate Members` (for timeouts)
 - `Send Messages` (for log-channel alerts)
 
+Invite the bot with both the `bot` and `applications.commands` OAuth2 scopes so slash commands are available.
+
+---
+
+## Per-server configuration (`/spam-config`)
+
+The bot works in any number of servers. Every setting can be overridden per server by members with the **Manage Server** permission:
+
+- `/spam-config view` — show the current settings (overrides are marked, everything else shows the bot default)
+- `/spam-config set setting:<name> value:<number>` — override a numeric setting for this server
+- `/spam-config log-channel channel:#alerts` — set the alert channel (omit the channel to disable alerts)
+- `/spam-config reset [setting]` — remove one override, or all of them
+
+Overrides are stored in Redis and take effect immediately.
+
 ---
 
 ## Configuration (.env)
 
-Set the variables in your `.env` file. Common options include:
+The variables in your `.env` file act as **global defaults** for servers that have not overridden them with `/spam-config`. Common options include:
 
 | Variable                                | Default                  | Description                                                 |
 | --------------------------------------- | ------------------------ | ----------------------------------------------------------- |
@@ -103,7 +118,7 @@ Tracking keys expire so users do not accumulate punishments over long periods.
 - Build: `npm run build`
 - Run compiled: `npm start`
 - Run in dev (no build): `npm run dev`
-- Tests: `npm test` (project uses `jest`)
+- Tests: `npm test` (project uses `vitest`)
 
 If you add or modify types, ensure `tsc` compiles without errors.
 
