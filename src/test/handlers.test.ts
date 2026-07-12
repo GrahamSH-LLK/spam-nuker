@@ -1,6 +1,7 @@
 import { expect, test } from "vitest";
 
 import {
+  applyTimeout,
   getImageUrls,
   hammingDistance,
   hashImageUrl,
@@ -40,6 +41,36 @@ test("getImageUrls – returns attachment and embed image URLs", () => {
     "https://cdn.discordapp.com/attachments/1/2/img.png",
     "https://example.com/image.jpg",
     "https://example.com/thumb.jpg",
+  ]);
+});
+
+test("applyTimeout – includes the triggering image in the log", async () => {
+  let alert: any;
+  const image = Buffer.from("image bytes");
+  const message = {
+    attachments: new Map([
+      ["image", { contentType: "image/png", url: "https://example.com/spam.png" }],
+    ]),
+    embeds: [],
+    author: { id: "user-1", tag: "spammer" },
+    member: { moderatable: true, timeout: async () => undefined },
+    guild: {
+      name: "Test guild",
+      channels: {
+        cache: new Map([
+          ["logs", { isTextBased: () => true, send: async (payload: any) => { alert = payload; } }],
+        ]),
+      },
+    },
+  } as any;
+
+  expect(
+    await applyTimeout(message, "image-spam", 60_000, "logs", {
+      imageFiles: [{ attachment: image, name: "spam-image-1.png" }],
+    }),
+  ).toBe(true);
+  expect(alert.files).toEqual([
+    { attachment: image, name: "spam-image-1.png" },
   ]);
 });
 

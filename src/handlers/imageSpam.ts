@@ -27,6 +27,30 @@ function uniqueHashes(hashes: string[]) {
   return [...new Set(hashes)];
 }
 
+async function downloadImagesForLog(urls: string[]) {
+  const files = await Promise.all(
+    urls.slice(0, 10).map(async (url, index) => {
+      try {
+        const response = await fetch(url);
+        if (!response.ok) return null;
+        const subtype = response.headers
+          .get("content-type")
+          ?.match(/^image\/([a-z0-9.+-]+)/i)?.[1]
+          ?.replace("jpeg", "jpg")
+          .replace(/[^a-z0-9]/gi, "");
+        return {
+          attachment: Buffer.from(await response.arrayBuffer()),
+          name: `spam-image-${index + 1}.${subtype || "png"}`,
+        };
+      } catch {
+        return null;
+      }
+    }),
+  );
+
+  return files.filter((file): file is NonNullable<typeof file> => file !== null);
+}
+
 /**
  * Returns true when an attachment is an image.
  *
@@ -212,6 +236,7 @@ export async function handleCrossChannelImageSpam(
     maxDistance,
   );
   if (storedMatch) {
+    const imageFiles = await downloadImagesForLog(imageUrls);
     await deleteMessages(message.guild, [
       { channelId: message.channelId, messageId: message.id },
     ]);
@@ -223,6 +248,7 @@ export async function handleCrossChannelImageSpam(
       logChannelId,
       {
         detail: `Sent image matching stored hash (pHash distance <= ${maxDistance})`,
+        imageFiles,
       },
     );
   }
@@ -268,6 +294,8 @@ export async function handleCrossChannelImageSpam(
     ) {
       await redis.del(key);
 
+      const imageFiles = await downloadImagesForLog(imageUrls);
+
       // delete matching messages including the first ones (best-effort)
       try {
         await deleteMessages(message.guild, matches.map((m) => ({
@@ -288,6 +316,7 @@ export async function handleCrossChannelImageSpam(
             `Sent matching image in ${distinctChannels} channel(s) within ${window}s ` +
             `(pHash distance <= ${maxDistance})`,
           imageHashes: hashes,
+          imageFiles,
         },
       );
     }
@@ -303,7 +332,7 @@ export async function handleCrossChannelImageSpam(
  * @param {string} reason
  * @param {number} timeoutMs
  * @param {string|null} logChannelId
- * @param {{detail?: string, imageHashes?: string[]}} [extra]
+ * @param {{detail?: string, imageHashes?: string[], imageFiles?: {attachment: Buffer, name: string}[]}} [extra]
  * @returns {Promise<boolean>}
  */
 export async function applyTimeout(
@@ -311,7 +340,11 @@ export async function applyTimeout(
   reason: string,
   timeoutMs: number,
   logChannelId: string | null,
-  extra: { detail?: string; imageHashes?: string[] } = {},
+  extra: {
+    detail?: string;
+    imageHashes?: string[];
+    imageFiles?: { attachment: Buffer; name: string }[];
+  } = {},
 ) {
   const member = message.member;
   if (!member || !member.moderatable) return false;
@@ -359,6 +392,7 @@ export async function applyTimeout(
             `Reason: \`${reason}\` | ${extra.detail ?? ""} | ` +
             `Timed out for ${timeoutMs / 1000}s`,
           components,
+          files: extra.imageFiles ?? [],
         });
       }
     }

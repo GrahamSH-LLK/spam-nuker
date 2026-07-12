@@ -79,8 +79,9 @@ function envInt(name: string, fallback: number) {
 }
 
 /**
- * Global defaults, taken from the environment. These apply to every guild
- * that has not overridden a setting via /spam-config.
+ * Global defaults. Numeric defaults may be overridden through the environment;
+ * log alerts remain disabled until a guild configures a channel via
+ * /spam-config.
  */
 export function getDefaultConfig(): GuildConfig {
   return {
@@ -91,7 +92,7 @@ export function getDefaultConfig(): GuildConfig {
     imageWindow: envInt("CROSS_CHANNEL_IMAGE_WINDOW", 60),
     messageThreshold: envInt("CROSS_CHANNEL_THRESHOLD", 3),
     messageWindow: envInt("CROSS_CHANNEL_WINDOW", 60),
-    logChannelId: process.env.LOG_CHANNEL_ID || null,
+    logChannelId: null,
   };
 }
 

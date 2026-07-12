@@ -7,6 +7,10 @@ test("mergeGuildConfig – returns defaults when nothing is stored", () => {
   expect(mergeGuildConfig(defaults, {})).toEqual(defaults);
 });
 
+test("getDefaultConfig – disables log alerts by default", () => {
+  expect(getDefaultConfig().logChannelId).toBeNull();
+});
+
 test("mergeGuildConfig – applies stored numeric overrides", () => {
   const defaults = getDefaultConfig();
   const merged = mergeGuildConfig(defaults, {

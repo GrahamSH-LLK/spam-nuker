@@ -99,7 +99,6 @@ The variables in your `.env` file act as **global defaults** for servers that ha
 | `CROSS_CHANNEL_IMAGE_WINDOW`            | `60`                     | Sliding window for cross-channel image detection            |
 | `CROSS_CHANNEL_THRESHOLD`               | `3`                      | Channels a message may appear in before flagging            |
 | `CROSS_CHANNEL_WINDOW`                  | `60`                     | Sliding window in seconds for cross-channel detection       |
-| `LOG_CHANNEL_ID`                        | _(empty)_                | ID of the channel to post alerts in (optional)              |
 
 ---
 
