@@ -26,7 +26,7 @@
     "discord.js": "^14.26.4",
     "dotenv": "^17.4.2",
     "ioredis": "^5.11.0",
-    "sharp": "^0.34.5"
+    "sharp": "^0.35.4"
   },
   "devDependencies": {
     "@types/node": "^25.9.1",
