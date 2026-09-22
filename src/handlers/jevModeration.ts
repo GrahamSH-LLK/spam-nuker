@@ -151,7 +151,7 @@ export async function handleJevModeration(
     }
     const excerpt = escapeMarkdown(message.content.slice(0, 700).replace(/\s+/g, " "));
     await logChannel.send({
-      content: `⚠️ **Jev moderation** | User: <@${message.author.id}> | Channel: <#${message.channelId}> | ${reasons.join(", ")}\nMessage: ${message.url}${excerpt ? `\nExcerpt: ${excerpt}` : ""}`,
+      content: `⚠️ **classifier moderation** | User: <@${message.author.id}> | Channel: <#${message.channelId}> | ${reasons.join(", ")}\nMessage: ${message.url}${excerpt ? `\nExcerpt: ${excerpt}` : ""}`,
       allowedMentions: { parse: [] },
     });
   } catch (error) {
