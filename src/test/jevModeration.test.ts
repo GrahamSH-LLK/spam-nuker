@@ -73,6 +73,25 @@ test("scams and hostility flag without deleting", async () => {
   expect(deletion).not.toHaveBeenCalled();
 });
 
+test("safety references, unwanted behavior, and requests for a moderator alert without deleting", async () => {
+  const { msg, send, deletion } = message();
+  const newCategories = {
+    selfHarm: 0.84,
+    alcohol: 0.79,
+    drugs: 0.91,
+    otherSubstances: 0.82,
+    unwantedBehavior: 0.88,
+    moderatorHelp: 0.95,
+  };
+  await handleJevModeration(msg, "logs", "test-key", fetchWithScores(scores(newCategories)));
+  expect(send).toHaveBeenCalledOnce();
+  for (const category of Object.keys(newCategories) as (keyof typeof newCategories)[]) {
+    expect(send.mock.calls[0][0].content).toContain(MODERATION_RULES[category].label);
+  }
+  expect(deletion).not.toHaveBeenCalled();
+  expect(moderationActions(scores({ selfHarm: 0.69, moderatorHelp: 0.69 })).flagged).toEqual([]);
+});
+
 test("hate speech deletion is still attempted when an alert fails", async () => {
   const { msg, deletion } = message();
   msg.guild.channels.fetch = vi.fn(async () => { throw new Error("missing channel"); });

@@ -60,6 +60,60 @@ export const MODERATION_RULES = {
       false: "No exposed private information; public business details and one's own volunteered details do not count.",
     },
   },
+  selfHarm: {
+    label: "self-harm reference",
+    threshold: 0.7,
+    instructions: "Does this message mention or suggest suicide, self-injury, an urge or plan to hurt oneself, or concern that someone may hurt themselves?",
+    criteria: {
+      true: "Any direct or indirect reference to self-harm, suicidal thoughts, an attempt, encouragement, or concern about someone at risk; a request for help also counts.",
+      false: "No reference to self-harm or suicide; sadness or frustration alone does not count.",
+    },
+  },
+  alcohol: {
+    label: "alcohol reference",
+    threshold: 0.7,
+    instructions: "Does this message mention or suggest drinking alcohol, being drunk, alcohol misuse, or obtaining alcoholic drinks?",
+    criteria: {
+      true: "A literal reference to alcoholic drinks, drinking, intoxication, or alcohol-related harm, including casual mentions.",
+      false: "No literal alcohol reference; unrelated uses of words such as 'drunk' as a metaphor do not count.",
+    },
+  },
+  drugs: {
+    label: "drug reference",
+    threshold: 0.7,
+    instructions: "Does this message mention or suggest recreational drugs, misuse of medication, drug sales, intoxication, or overdose?",
+    criteria: {
+      true: "A literal reference to nonmedical drug use, drug supply, substance misuse, or overdose, including concern about someone else.",
+      false: "No such drug reference; routine discussion of prescribed treatment used as directed does not count.",
+    },
+  },
+  otherSubstances: {
+    label: "other substance reference",
+    threshold: 0.7,
+    instructions: "Does this message mention or suggest using or obtaining nicotine, tobacco, vapes, inhalants, or another intoxicating substance not covered by alcohol or recreational drugs?",
+    criteria: {
+      true: "A literal reference to smoking, vaping, nicotine, tobacco, inhalant use, or another intoxicating substance, including casual mentions or concern about someone else.",
+      false: "No such substance reference; unrelated uses of words like 'smoke' or 'vape' do not count.",
+    },
+  },
+  unwantedBehavior: {
+    label: "reported unwanted behavior",
+    threshold: 0.7,
+    instructions: "Does the author say or imply that someone else is doing something unwanted to them or crossing their boundaries?",
+    criteria: {
+      true: "The author reports, hints at, or asks for help with another person's unwanted contact, conduct, tone, harassment, stalking, coercion, threats, bullying, or sexual attention toward them.",
+      false: "No unwanted behavior toward the author is described or implied; ordinary disagreement without a boundary concern does not count.",
+    },
+  },
+  moderatorHelp: {
+    label: "moderator assistance requested",
+    threshold: 0.7,
+    instructions: "Is the author explicitly or implicitly asking for a moderator or server staff member to step in?",
+    criteria: {
+      true: "A direct request for a mod or staff member, a request to report or enforce server rules, or a contextual appeal for someone in authority to handle a problem.",
+      false: "No request for moderator intervention; merely mentioning a moderator or discussing moderation in general does not count.",
+    },
+  },
 } as const;
 
 export type ModerationCategory = keyof typeof MODERATION_RULES;
