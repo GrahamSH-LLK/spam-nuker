@@ -66,11 +66,14 @@ test("only high probability hate speech causes deletion", async () => {
   expect(deletion).toHaveBeenCalledOnce();
 });
 
-test("scams and hostility flag without deleting", async () => {
+test("scams, misleading links, and hostility flag without deleting", async () => {
   const { msg, send, deletion } = message();
-  await handleJevModeration(msg, "logs", "test-key", fetchWithScores(scores({ scam: 0.93, hostility: 0.9 })));
+  msg.content = "Sign in to Example at https://example-login.test";
+  await handleJevModeration(msg, "logs", "test-key", fetchWithScores(scores({ scam: 0.93, misleadingLink: 0.84, hostility: 0.9 })));
   expect(send).toHaveBeenCalledOnce();
+  expect(send.mock.calls[0][0].content).toContain("misleading link (0.84)");
   expect(deletion).not.toHaveBeenCalled();
+  expect(moderationActions(scores({ misleadingLink: 0.79 })).flagged).toEqual([]);
 });
 
 test("safety references, unwanted behavior, and requests for a moderator alert without deleting", async () => {

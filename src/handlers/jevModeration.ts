@@ -24,6 +24,15 @@ export const MODERATION_RULES = {
       false: "Ordinary promotion, warnings about scams, and legitimate discussion do not count.",
     },
   },
+  misleadingLink: {
+    label: "misleading link",
+    threshold: 0.8,
+    instructions: "Does this message present a link as belonging to a named service, company, or organization when the actual destination URL points to an unrelated or lookalike domain? Compare the claimed identity in the message, link text, or embed with the URL's hostname.",
+    criteria: {
+      true: "A link is presented as an official destination, login, offer, or support page for a named entity, but its destination hostname clearly does not belong to that entity and appears intended to mislead readers.",
+      false: "No link or no claimed official identity; the destination matches the claimed entity, is a clearly disclosed third-party site, or the message is warning about or discussing a suspicious link rather than promoting it. Do not infer a mismatch when the relationship between the entity and hostname is uncertain.",
+    },
+  },
   hostility: {
     label: "hostility",
     threshold: 0.85,
