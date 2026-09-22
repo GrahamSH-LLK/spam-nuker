@@ -11,6 +11,7 @@ import {
   handleConfigCommand,
 } from "./handlers/configCommand.js";
 import { getGuildConfig } from "./config.js";
+import { handleJevModeration } from "./handlers/jevModeration.js";
 
 // ── Configuration ─────────────────────────────────────────────────────────────
 
@@ -70,11 +71,18 @@ client.on("messageCreate", async (message) => {
 
   if (crossChannelImageFlagged) return;
 
-  await handleCrossChannelSpam(message, {
+  const crossChannelSpamFlagged = await handleCrossChannelSpam(message, {
     ...opts,
     threshold: config.messageThreshold,
     window: config.messageWindow,
   });
+  if (crossChannelSpamFlagged) return;
+
+  try {
+    await handleJevModeration(message, config.logChannelId);
+  } catch (err: any) {
+    console.error("[spam-nuker] Jev moderation failed:", err?.message ?? err);
+  }
 });
 
 client.on("interactionCreate", async (interaction) => {

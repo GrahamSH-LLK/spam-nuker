@@ -82,6 +82,14 @@ The bot works in any number of servers. Every setting can be overridden per serv
 
 Overrides are stored in Redis and take effect immediately.
 
+### Jev text moderation
+
+Set `TYPESAFE_API_KEY` in `.env` and choose an alert channel for each server with `/spam-config log-channel channel:#alerts`. Text moderation runs only when both are configured. The bot sends message text, attachment names and URLs, and embed text and URLs to TypeSafe's `jev-latest` model. It does not analyze image pixels.
+
+Jev returns a probability for each independent moderation question. At **0.95 or above**, hate speech is reported to the alert channel and the message is deleted. Scams are flagged at **0.90 or above**. Hostility, threats of violence, targeted harassment, and exposed private information are flagged at **0.85 or above**. These categories are review alerts only: they do not delete a message or time out a user. Alerts include the probabilities and a short message excerpt. If Jev is unavailable or returns an invalid response, the bot leaves the message alone and logs the error. If an alert cannot be posted, it still attempts a hate-speech deletion and logs the alert failure.
+
+These are starting thresholds, not measured accuracy guarantees. Check representative messages from your servers and adjust the thresholds and question wording in `src/handlers/jevModeration.ts` before relying on automatic deletion at scale. The bot needs access to the alert channel to make reports visible to moderators.
+
 ---
 
 ## Configuration (.env)
@@ -99,6 +107,7 @@ The variables in your `.env` file act as **global defaults** for servers that ha
 | `CROSS_CHANNEL_IMAGE_WINDOW`            | `60`                     | Sliding window for cross-channel image detection            |
 | `CROSS_CHANNEL_THRESHOLD`               | `3`                      | Channels a message may appear in before flagging            |
 | `CROSS_CHANNEL_WINDOW`                  | `60`                     | Sliding window in seconds for cross-channel detection       |
+| `TYPESAFE_API_KEY`                       | —                        | Enables Jev moderation when a server alert channel is set   |
 
 ---
 
