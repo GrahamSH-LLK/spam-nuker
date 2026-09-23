@@ -81,6 +81,7 @@ The bot works in any number of servers. Every setting can be overridden per serv
 - `/spam-config reset [setting]` — remove one override, or all of them
 
 Overrides are stored in Redis and take effect immediately.
+JEV moderation alerts share a dedicated thread in the alert channel. The bot creates the thread on the first alert and reopens it if Discord archives it.
 
 
 ---

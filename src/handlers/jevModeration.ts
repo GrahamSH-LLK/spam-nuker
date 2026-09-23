@@ -1,9 +1,43 @@
-import { escapeMarkdown } from "discord.js";
-import type { Message } from "discord.js";
+import { ChannelType, escapeMarkdown } from "discord.js";
+import type { Message, TextChannel } from "discord.js";
+
+import { getRedisClient } from "../redis.js";
 
 const API_URL = "https://api.typesafe.ai/v1/systemone";
 const MODEL = "jev-latest";
 const REQUEST_TIMEOUT_MS = 10_000;
+const JEV_THREAD_NAME = "classifier moderation";
+const pendingThreads = new Map<string, Promise<Awaited<ReturnType<TextChannel["threads"]["create"]>>>>();
+
+async function findOrCreateJevThread(logChannel: TextChannel) {
+  const redis = getRedisClient();
+  const key = `jev_moderation_thread:${logChannel.id}`;
+  const threadId = await redis.get(key);
+  if (threadId) {
+    const thread = await logChannel.threads.fetch(threadId).catch(() => null);
+    if (thread && thread.parentId === logChannel.id) {
+      if (thread.archived) await thread.setArchived(false);
+      return thread;
+    }
+  }
+
+  const thread = await logChannel.threads.create({
+    name: JEV_THREAD_NAME,
+    autoArchiveDuration: 1440,
+  });
+  await redis.set(key, thread.id);
+  return thread;
+}
+
+function jevThread(logChannel: TextChannel) {
+  let pending = pendingThreads.get(logChannel.id);
+  if (!pending) {
+    pending = findOrCreateJevThread(logChannel);
+    pendingThreads.set(logChannel.id, pending);
+    void pending.finally(() => pendingThreads.delete(logChannel.id)).catch(() => {});
+  }
+  return pending;
+}
 
 export const MODERATION_RULES = {
   hate: {
@@ -209,11 +243,12 @@ export async function handleJevModeration(
   const reasons = flagged.map((category) => `${MODERATION_RULES[category].label} (${scores[category].toFixed(2)})`);
   try {
     const logChannel = await message.guild?.channels.fetch(logChannelId);
-    if (!logChannel?.isTextBased() || !('send' in logChannel)) {
+    if (logChannel?.type !== ChannelType.GuildText) {
       throw new Error(`Alert channel ${logChannelId} is unavailable`);
     }
     const excerpt = escapeMarkdown(message.content.slice(0, 700).replace(/\s+/g, " "));
-    await logChannel.send({
+    const thread = await jevThread(logChannel);
+    await thread.send({
       content: `⚠️ **classifier moderation** | User: <@${message.author.id}> | Channel: <#${message.channelId}> | ${reasons.join(", ")}\nMessage: ${message.url}${excerpt ? `\nExcerpt: ${excerpt}` : ""}`,
       allowedMentions: { parse: [] },
     });
