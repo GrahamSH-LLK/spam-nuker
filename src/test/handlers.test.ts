@@ -1,4 +1,7 @@
-import { expect, test } from "vitest";
+import { expect, test, vi } from "vitest";
+
+const { recordSpamAlert } = vi.hoisted(() => ({ recordSpamAlert: vi.fn(async () => undefined) }));
+vi.mock("../handlers/banAlerts.js", () => ({ recordSpamAlert }));
 
 import {
   applyTimeout,
@@ -46,6 +49,11 @@ test("getImageUrls – returns attachment and embed image URLs", () => {
 
 test("applyTimeout – includes the triggering image in the log", async () => {
   let alert: any;
+  const logChannel = {
+    id: "logs",
+    isTextBased: () => true,
+    send: async (payload: any) => { alert = payload; return { id: "alert-1" }; },
+  };
   const image = Buffer.from("image bytes");
   const message = {
     attachments: new Map([
@@ -55,11 +63,10 @@ test("applyTimeout – includes the triggering image in the log", async () => {
     author: { id: "user-1", tag: "spammer" },
     member: { moderatable: true, timeout: async () => undefined },
     guild: {
+      id: "guild-1",
       name: "Test guild",
       channels: {
-        cache: new Map([
-          ["logs", { isTextBased: () => true, send: async (payload: any) => { alert = payload; } }],
-        ]),
+        cache: new Map([["logs", logChannel]]),
       },
     },
   } as any;
@@ -72,6 +79,7 @@ test("applyTimeout – includes the triggering image in the log", async () => {
   expect(alert.files).toEqual([
     { attachment: image, name: "spam-image-1.png" },
   ]);
+  expect(recordSpamAlert).toHaveBeenCalledWith(message.guild, "user-1", "logs", "alert-1");
 });
 
 // ── hammingDistance ───────────────────────────────────────────────────────────

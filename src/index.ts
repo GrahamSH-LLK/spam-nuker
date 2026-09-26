@@ -12,6 +12,7 @@ import {
 } from "./handlers/configCommand.js";
 import { getGuildConfig } from "./config.js";
 import { handleJevModeration } from "./handlers/jevModeration.js";
+import { handleSpamBan, handleSpamUnban } from "./handlers/banAlerts.js";
 
 // ── Configuration ─────────────────────────────────────────────────────────────
 
@@ -29,6 +30,7 @@ const client = new Client({
     GatewayIntentBits.GuildMessages,
     GatewayIntentBits.MessageContent, // privileged intent – must be enabled in the Developer Portal
     GatewayIntentBits.GuildMembers, // needed to call member.timeout()
+    GatewayIntentBits.GuildModeration, // ban and unban events
   ],
   partials: [Partials.Message, Partials.Channel],
 });
@@ -82,6 +84,22 @@ client.on("messageCreate", async (message) => {
     await handleJevModeration(message, config.logChannelId);
   } catch (err: any) {
     console.error("[spam-nuker] Jev moderation failed:", err?.message ?? err);
+  }
+});
+
+client.on("guildBanAdd", async (ban) => {
+  try {
+    await handleSpamBan(ban);
+  } catch (err) {
+    console.error("[spam-nuker] Failed to update spam alerts after ban:", err);
+  }
+});
+
+client.on("guildBanRemove", async (ban) => {
+  try {
+    await handleSpamUnban(ban);
+  } catch (err) {
+    console.error("[spam-nuker] Failed to clear spam ban marker:", err);
   }
 });
 

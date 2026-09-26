@@ -4,6 +4,7 @@ import { fromRgba } from "@stabilityprotocol.com/phash";
 import sharp from "sharp";
 
 import { getRedisClient } from "../redis.js";
+import { recordSpamAlert } from "./banAlerts.js";
 import {
   ActionRowBuilder,
   ButtonBuilder,
@@ -386,7 +387,7 @@ export async function applyTimeout(
           );
         }
 
-        await logChannel.send({
+        const alert = await logChannel.send({
           content:
             `⚠️ **Spam detected** | User: <@${message.author.id}> (\`${message.author.tag}\`) | ` +
             `Reason: \`${reason}\` | ${extra.detail ?? ""} | ` +
@@ -394,6 +395,13 @@ export async function applyTimeout(
           components,
           files: extra.imageFiles ?? [],
         });
+        if (message.guild) {
+          try {
+            await recordSpamAlert(message.guild, message.author.id, logChannel.id, alert.id);
+          } catch (error) {
+            console.error(`[spam-nuker] Failed to track spam alert ${alert.id}:`, error);
+          }
+        }
       }
     }
     return true;
