@@ -65,6 +65,10 @@ test("Jev receives one batch of independent Noul questions", async () => {
   expect(body.state.content).toBe("example message");
   expect(Object.keys(body.questions)).toEqual(categories);
   expect(body.questions.hate.type).toBe("noul");
+  expect(body.questions.drugs.criteria.false).toContain("robotics joints");
+  expect(body.questions.otherSubstances.criteria.false).toContain("SPARK Flex");
+  expect(body.questions.selfHarm.criteria.false).toContain("I'm dying");
+  expect(body.questions.unwantedBehavior.criteria.false).toContain("hypothetical scenarios");
 });
 
 test("only high probability hate speech causes deletion", async () => {
@@ -130,10 +134,10 @@ test("scams, misleading links, and hostility flag without deleting", async () =>
 test("safety references, unwanted behavior, and requests for a moderator alert without deleting", async () => {
   const { msg, send, deletion } = message();
   const newCategories = {
-    selfHarm: 0.84,
-    alcohol: 0.79,
+    selfHarm: 0.94,
+    alcohol: 0.89,
     drugs: 0.91,
-    otherSubstances: 0.82,
+    otherSubstances: 0.92,
     unwantedBehavior: 0.88,
     moderatorHelp: 0.95,
   };
@@ -144,6 +148,16 @@ test("safety references, unwanted behavior, and requests for a moderator alert w
   }
   expect(deletion).not.toHaveBeenCalled();
   expect(moderationActions(scores({ selfHarm: 0.69, moderatorHelp: 0.69 })).flagged).toEqual([]);
+});
+
+test("moderation bot commands are not sent to Jev or logged", async () => {
+  const { msg, send, deletion } = message();
+  msg.content = "&ban 1321963107693891698 compromised account";
+  const fetcher = fetchWithScores(scores({ moderatorHelp: 0.99 }));
+  expect(await handleJevModeration(msg, "logs", "test-key", fetcher)).toBe(false);
+  expect(fetcher).not.toHaveBeenCalled();
+  expect(send).not.toHaveBeenCalled();
+  expect(deletion).not.toHaveBeenCalled();
 });
 
 test("hate speech deletion is still attempted when an alert fails", async () => {

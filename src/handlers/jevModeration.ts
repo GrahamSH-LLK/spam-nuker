@@ -69,11 +69,11 @@ export const MODERATION_RULES = {
   },
   hostility: {
     label: "hostility",
-    threshold: 0.85,
-    instructions: "Is this message directly hostile toward another person or group in this conversation?",
+    threshold: 0.9,
+    instructions: "Is the author seriously directing abuse, bullying, or intimidation at another participant or identifiable community member? Judge the message's meaning and target, not profanity alone.",
     criteria: {
-      true: "Direct insults, bullying, intimidation, or sustained antagonism toward a person or group.",
-      false: "Civil disagreement, criticism of ideas, joking without a target, and neutral quotation do not count.",
+      true: "A clear personal attack, bullying, or intimidation aimed at a participant or community member.",
+      false: "Criticism of ideas, governments, companies, public figures outside the conversation, playful banter, venting, quotations, and profanity without a local target do not count.",
     },
   },
   threats: {
@@ -105,56 +105,56 @@ export const MODERATION_RULES = {
   },
   selfHarm: {
     label: "self-harm reference",
-    threshold: 0.7,
-    instructions: "Does this message mention or suggest suicide, self-injury, an urge or plan to hurt oneself, or concern that someone may hurt themselves?",
+    threshold: 0.85,
+    instructions: "Does this message convey a genuine concern about suicide or intentional self-injury, including an urge, plan, attempt, encouragement, or request for help? Read the actual sentence in context rather than matching words like 'die', 'jump', or 'hurt'.",
     criteria: {
-      true: "Any direct or indirect reference to self-harm, suicidal thoughts, an attempt, encouragement, or concern about someone at risk; a request for help also counts.",
-      false: "No reference to self-harm or suicide; sadness or frustration alone does not count.",
+      true: "A concrete or plausible expression of suicidal or self-injurious intent, an attempt, encouragement, or concern for someone at risk.",
+      false: "Figurative frustration, obvious hyperbole or jokes, descriptions of accidental danger, and phrases such as 'I'm dying', 'do that to yourself', or 'danger to themselves' in an unrelated context do not count. A future time reference alone is not evidence of self-harm.",
     },
   },
   alcohol: {
     label: "alcohol reference",
-    threshold: 0.7,
-    instructions: "Does this message mention or suggest drinking alcohol, being drunk, alcohol misuse, or obtaining alcoholic drinks?",
+    threshold: 0.85,
+    instructions: "Is the message about someone drinking, obtaining, promoting, or being impaired by alcoholic beverages? Mere mention of an alcohol-related word is insufficient.",
     criteria: {
-      true: "A literal reference to alcoholic drinks, drinking, intoxication, or alcohol-related harm, including casual mentions.",
-      false: "No literal alcohol reference; unrelated uses of words such as 'drunk' as a metaphor do not count.",
+      true: "A meaningful reference to alcohol consumption, access, intoxication, or alcohol-related harm.",
+      false: "Passing examples such as 'drinking, voting, driving', a wine company's sponsorship, liquor stores as locations, and figurative uses do not count unless the message actually discusses alcohol use or access.",
     },
   },
   drugs: {
     label: "drug reference",
-    threshold: 0.7,
-    instructions: "Does this message mention or suggest recreational drugs, misuse of medication, drug sales, intoxication, or overdose?",
+    threshold: 0.85,
+    instructions: "Is the message actually about recreational drugs, medication misuse, drug sales, intoxication, or overdose? Resolve ambiguous words using the surrounding technical or conversational context.",
     criteria: {
-      true: "A literal reference to nonmedical drug use, drug supply, substance misuse, or overdose, including concern about someone else.",
-      false: "No such drug reference; routine discussion of prescribed treatment used as directed does not count.",
+      true: "A clear reference to nonmedical drug use, supply, misuse, or overdose, including concern about someone else.",
+      false: "Song titles, jokes about a previous classifier result, calculator models such as 30X or 84 Plus CE, robotics joints, OPI robot hardware, software names, and ordinary prescribed treatment do not count. Do not infer drugs from an unfamiliar acronym or product name.",
     },
   },
   otherSubstances: {
     label: "other substance reference",
-    threshold: 0.7,
-    instructions: "Does this message mention or suggest using or obtaining nicotine, tobacco, vapes, inhalants, or another intoxicating substance not covered by alcohol or recreational drugs?",
+    threshold: 0.85,
+    instructions: "Is the message actually about using or obtaining nicotine, tobacco, vapes, inhalants, or another intoxicating substance? Resolve unfamiliar words in context.",
     criteria: {
-      true: "A literal reference to smoking, vaping, nicotine, tobacco, inhalant use, or another intoxicating substance, including casual mentions or concern about someone else.",
-      false: "No such substance reference; unrelated uses of words like 'smoke' or 'vape' do not count.",
+      true: "A clear reference to substance use or access, such as someone vaping or intentionally inhaling fumes.",
+      false: "Robotics parts (SPARK Flex, SPARK Lite, VRM, VIM, NEO, Vortex), calculator models, VEX prices, chemistry classes, and unrelated commands or abbreviations do not count. An incidental mention of workshop fumes alone does not establish intoxicant use.",
     },
   },
   unwantedBehavior: {
     label: "reported unwanted behavior",
-    threshold: 0.7,
-    instructions: "Does the author say or imply that someone else is doing something unwanted to them or crossing their boundaries?",
+    threshold: 0.85,
+    instructions: "Is the author seriously reporting harmful, coercive, or persistent unwanted conduct toward themselves, or asking for help with it? Distinguish a report of mistreatment from an ordinary complaint or hypothetical example.",
     criteria: {
-      true: "The author reports, hints at, or asks for help with another person's unwanted contact, conduct, tone, harassment, stalking, coercion, threats, bullying, or sexual attention toward them.",
-      false: "No unwanted behavior toward the author is described or implied; ordinary disagreement without a boundary concern does not count.",
+      true: "The author describes credible harassment, coercion, threats, bullying, or repeated boundary violations affecting them.",
+      false: "One-off annoyances, joking banter, ordinary disagreement, requests about pings, 'stop reminding me', hypothetical scenarios, and neutral accounts of someone else's conduct do not count. A simple 'go away' or 'don't do that' is not a report by itself.",
     },
   },
   moderatorHelp: {
     label: "moderator assistance requested",
-    threshold: 0.7,
-    instructions: "Is the author explicitly or implicitly asking for a moderator or server staff member to step in?",
+    threshold: 0.85,
+    instructions: "Is the author actually asking a moderator or server staff member to take an action? Distinguish a request from a command sent to a bot, discussion of moderation, or the word 'ban' in ordinary conversation.",
     criteria: {
-      true: "A direct request for a mod or staff member, a request to report or enforce server rules, or a contextual appeal for someone in authority to handle a problem.",
-      false: "No request for moderator intervention; merely mentioning a moderator or discussing moderation in general does not count.",
+      true: "A direct, current request for a moderator to intervene or take a server action, including a request to pin or post something.",
+      false: "Bot commands such as '&ban 123...', questions about ban appeals, and references to moderators or moderation without a request for staff action do not count.",
     },
   },
 } as const;
@@ -235,6 +235,7 @@ export async function handleJevModeration(
 ): Promise<boolean> {
   if (!apiKey || !logChannelId) return false;
   if (!message.content.trim() && message.embeds.length === 0 && message.attachments.size === 0) return false;
+  if (/^\s*&(?:ban|kick|timeout|mute|warn|unban)\b/i.test(message.content)) return false;
 
   const scores = await assessMessage(message, apiKey, fetcher);
   const { flagged, deleteMessage } = moderationActions(scores);
