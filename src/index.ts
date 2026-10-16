@@ -29,7 +29,6 @@ const client = new Client({
     GatewayIntentBits.Guilds,
     GatewayIntentBits.GuildMessages,
     GatewayIntentBits.MessageContent, // privileged intent – must be enabled in the Developer Portal
-    GatewayIntentBits.GuildMembers, // needed to call member.timeout()
     GatewayIntentBits.GuildModeration, // ban and unban events
   ],
   partials: [Partials.Message, Partials.Channel],
