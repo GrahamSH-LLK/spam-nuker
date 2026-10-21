@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
 import * as chrono from "chrono-node";
 import { SlashCommandBuilder } from "discord.js";
-import type { ChatInputCommandInteraction, Client } from "discord.js";
+import type { ChatInputCommandInteraction, Client, Message } from "discord.js";
 import { getRedisClient } from "../redis.js";
 
 const REMINDERS_KEY = "reminders:due";
@@ -51,6 +51,57 @@ type Reminder = {
   message: string;
 };
 
+export function parseChatReminder(input: string, now = new Date()) {
+  const command = /^v[?‽](?:remind|rem)(?:\s+|$)/i.exec(input);
+  if (!command) return null;
+
+  const body = input.slice(command[0].length).trim();
+  const parsed = chrono.parse(body, now, { forwardDate: true })[0];
+  if (!parsed) return { due: null, message: "" };
+
+  const due = parseReminderTime(parsed.text, now);
+  const before = body.slice(0, parsed.index);
+  const after = body.slice(parsed.index + parsed.text.length);
+  const message = `${before} ${after}`.trim().replace(/^(?:me\s+)?(?:to\s+)?/i, "").trim();
+  return { due, message };
+}
+
+async function saveReminder(userId: string, channelId: string, message: string, dueAt: number) {
+  const reminder: Reminder = { id: randomUUID(), userId, channelId, message };
+  const redis = getRedisClient();
+  await redis.set(`reminder:${reminder.id}`, JSON.stringify(reminder));
+  await redis.zadd(REMINDERS_KEY, dueAt, reminder.id);
+}
+
+export async function handleChatReminderCommand(message: Message) {
+  const parsed = parseChatReminder(message.content);
+  if (!parsed) return false;
+
+  if (!parsed.due || !parsed.message || parsed.message.length > 1500) {
+    await message.reply({
+      content: 'Use `v?remind in 2 hours` or `v‽rem do something tomorrow at 9am` (up to five years ahead).',
+      allowedMentions: { repliedUser: false },
+    });
+    return true;
+  }
+
+  try {
+    const dueAt = parsed.due.getTime();
+    await saveReminder(message.author.id, message.channelId, parsed.message, dueAt);
+    await message.reply({
+      content: `I’ll remind you <t:${Math.floor(dueAt / 1000)}:R> in this channel.`,
+      allowedMentions: { repliedUser: false },
+    });
+  } catch (error) {
+    console.error("[spam-nuker] Failed to create chat reminder:", error);
+    await message.reply({
+      content: "Something went wrong creating that reminder.",
+      allowedMentions: { repliedUser: false },
+    }).catch(() => {});
+  }
+  return true;
+}
+
 export async function handleReminderCommand(
   interaction: ChatInputCommandInteraction,
 ) {
@@ -70,15 +121,7 @@ export async function handleReminderCommand(
 
   await interaction.deferReply({ ephemeral: true });
   const dueAt = due.getTime();
-  const reminder: Reminder = {
-    id: randomUUID(),
-    userId: interaction.user.id,
-    channelId: interaction.channelId,
-    message,
-  };
-  const redis = getRedisClient();
-  await redis.set(`reminder:${reminder.id}`, JSON.stringify(reminder));
-  await redis.zadd(REMINDERS_KEY, dueAt, reminder.id);
+  await saveReminder(interaction.user.id, interaction.channelId, message, dueAt);
   await interaction.editReply(
     `I’ll remind you <t:${Math.floor(dueAt / 1000)}:R> in this channel.`,
   );

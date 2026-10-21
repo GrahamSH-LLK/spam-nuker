@@ -13,7 +13,7 @@ import {
 import { getGuildConfig } from "./config.js";
 import { handleJevModeration } from "./handlers/jevModeration.js";
 import { handleSpamBan, handleSpamUnban } from "./handlers/banAlerts.js";
-import { reminderCommand, handleReminderCommand, deliverDueReminders } from "./handlers/reminderCommand.js";
+import { reminderCommand, handleReminderCommand, handleChatReminderCommand, deliverDueReminders } from "./handlers/reminderCommand.js";
 
 // ── Configuration ─────────────────────────────────────────────────────────────
 
@@ -65,6 +65,8 @@ client.on("messageCreate", async (message) => {
   if (message.author.bot) return;
   if (!message.guild) return;
   if (message.system) return;
+
+  if (await handleChatReminderCommand(message)) return;
 
   const config = await getGuildConfig(message.guild.id);
   const opts = {
