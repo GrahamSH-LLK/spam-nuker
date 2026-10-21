@@ -27,12 +27,16 @@ describe("reminder time parsing", () => {
   });
 
   it("names EST or EDT and explains how to reschedule a defaulted time", () => {
-    const winter = reminderConfirmation(Date.parse("2026-01-16T14:00:00Z"), "test-id", true);
-    const summer = reminderConfirmation(Date.parse("2026-07-16T13:00:00Z"), "test-id", true);
+    const winter = reminderConfirmation(Date.parse("2026-01-16T14:00:00Z"), "a1b2c3d4e5f6", true);
+    const summer = reminderConfirmation(Date.parse("2026-07-16T13:00:00Z"), "a1b2c3d4e5f6", true);
     expect(winter).toContain("Eastern Time (EST)");
     expect(summer).toContain("Eastern Time (EDT)");
-    expect(summer).toContain("/cancel id:test-id");
-    expect(summer).toContain("tomorrow at 9am UTC");
+    expect(summer.split("\n")).toHaveLength(3);
+    expect(summer).toContain("v?cancel a1b2c3d4e5f6");
+    expect(summer).toContain("7am UTC");
+    expect(summer).toContain("I’ll remind you");
+    expect(reminderConfirmation(Date.parse("2026-07-16T13:00:00Z"), "a1b2c3d4e5f6", true, "slash"))
+      .toContain("/cancel id:a1b2c3d4e5f6");
   });
 });
 
@@ -71,5 +75,13 @@ describe("chat reminder parsing", () => {
     expect(parseChatReminder("please remind me in 2 hours", now)).toBeNull();
     expect(parseChatReminder("v?reminder in 2 hours", now)).toBeNull();
     expect(parseChatReminder("‽rem in 2 hours to call mom", now)).toBeNull();
+  });
+
+  it("accepts a time without a custom reminder message", () => {
+    expect(parseChatReminder("v?rem tomorrow at 7am", new Date("2026-10-21T12:00:00Z"))).toEqual({
+      due: new Date("2026-10-22T11:00:00Z"),
+      message: "It’s time.",
+      usesDefaultTimezone: true,
+    });
   });
 });

@@ -1,4 +1,4 @@
-import { randomUUID } from "node:crypto";
+import { randomBytes } from "node:crypto";
 import * as chrono from "chrono-node";
 import { SlashCommandBuilder } from "discord.js";
 import type { ChatInputCommandInteraction, Client, Message } from "discord.js";
@@ -75,8 +75,7 @@ export const reminderCommand = new SlashCommandBuilder()
   .addStringOption((option) =>
     option
       .setName("message")
-      .setDescription("What to remind you about")
-      .setRequired(true)
+      .setDescription("What to remind you about (optional)")
       .setMaxLength(1500),
   );
 
@@ -117,7 +116,7 @@ export function parseChatReminder(input: string, now = new Date()) {
   const message = `${before} ${after}`
     .trim()
     .replace(/^(?:me\s+)?(?:to\s+)?/i, "")
-    .trim();
+    .trim() || "It’s time.";
   return { due, message, usesDefaultTimezone };
 }
 
@@ -127,15 +126,22 @@ async function saveReminder(
   message: string,
   dueAt: number,
 ) {
-  const reminder: Reminder = { id: randomUUID(), userId, channelId, message };
   const redis = getRedisClient();
-  await redis.set(`reminder:${reminder.id}`, JSON.stringify(reminder));
-  await redis.zadd(REMINDERS_KEY, dueAt, reminder.id);
-  return reminder.id;
+  while (true) {
+    const reminder: Reminder = {
+      id: randomBytes(6).toString("hex"),
+      userId,
+      channelId,
+      message,
+    };
+    if (await redis.set(`reminder:${reminder.id}`, JSON.stringify(reminder), "NX") !== "OK") continue;
+    await redis.zadd(REMINDERS_KEY, dueAt, reminder.id);
+    return reminder.id;
+  }
 }
 
 export async function cancelReminder(id: string, userId: string) {
-  if (!/^[\da-f]{8}-[\da-f]{4}-[\da-f]{4}-[\da-f]{4}-[\da-f]{12}$/i.test(id))
+  if (!/^(?:[\da-f]{12}|[\da-f]{8}-[\da-f]{4}-[\da-f]{4}-[\da-f]{4}-[\da-f]{12})$/i.test(id))
     return 0;
   const redis = getRedisClient();
   return (await redis.eval(
@@ -160,6 +166,7 @@ export function reminderConfirmation(
   dueAt: number,
   id: string,
   usesDefaultTimezone: boolean,
+  command: "chat" | "slash" = "chat",
 ) {
   const zone = new Intl.DateTimeFormat("en-US", {
     timeZone: "America/New_York",
@@ -167,10 +174,13 @@ export function reminderConfirmation(
   })
     .formatToParts(new Date(dueAt))
     .find((part) => part.type === "timeZoneName")?.value;
-  const fallback = usesDefaultTimezone
-    ? ` I used Eastern Time (${zone}) because no timezone was given. To use another timezone, cancel this reminder and create it again with a timezone in the time field (for example, \`tomorrow at 9am UTC\`).`
-    : "";
-  return `I’ll remind you <t:${Math.floor(dueAt / 1000)}:F> in this channel. ID: \`${id}\`. Cancel with \`/cancel id:${id}\` or \`v?cancel ${id}\`.${fallback}`;
+  const cancel = command === "slash" ? `/cancel id:${id}` : `v?cancel ${id}`;
+  const lines = [`I’ll remind you <t:${Math.floor(dueAt / 1000)}:f> in this channel.`];
+  if (usesDefaultTimezone) {
+    lines.push(`I used Eastern Time (${zone}) since you didn’t give a timezone. To change it, cancel and try again with \`7am UTC\`.`);
+  }
+  lines.push(`ID: \`${id}\` · Cancel: \`${cancel}\``);
+  return lines.join("\n");
 }
 
 export async function handleChatCancelReminderCommand(message: Message) {
@@ -241,7 +251,7 @@ export async function handleReminderCommand(
   if (interaction.commandName !== "remind") return false;
 
   const when = interaction.options.getString("when", true);
-  const message = interaction.options.getString("message", true).trim();
+  const message = interaction.options.getString("message")?.trim() || "It’s time.";
   const due = parseReminderTime(when);
   if (!due || !message || message.length > 1500) {
     await interaction.reply({
@@ -266,6 +276,7 @@ export async function handleReminderCommand(
       dueAt,
       id,
       reminderTimeUsesDefaultTimezone(when),
+      "slash",
     ),
     allowedMentions: NO_MENTIONS,
   });
