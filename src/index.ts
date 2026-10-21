@@ -13,6 +13,7 @@ import {
 import { getGuildConfig } from "./config.js";
 import { handleJevModeration } from "./handlers/jevModeration.js";
 import { handleSpamBan, handleSpamUnban } from "./handlers/banAlerts.js";
+import { reminderCommand, handleReminderCommand, deliverDueReminders } from "./handlers/reminderCommand.js";
 
 // ── Configuration ─────────────────────────────────────────────────────────────
 
@@ -40,7 +41,7 @@ client.once("ready", async () => {
   console.log(`[spam-nuker] Logged in as ${client.user?.tag}`);
 
   try {
-    await client.application?.commands.set([configCommand.toJSON()]);
+    await client.application?.commands.set([configCommand.toJSON(), reminderCommand.toJSON()]);
     console.log("[spam-nuker] Registered slash commands");
   } catch (err: any) {
     console.error(
@@ -48,6 +49,15 @@ client.once("ready", async () => {
       err?.message ?? err,
     );
   }
+
+  setInterval(() => {
+    deliverDueReminders(client).catch((err) =>
+      console.error("[spam-nuker] Reminder check failed:", err),
+    );
+  }, 10_000);
+  deliverDueReminders(client).catch((err) =>
+    console.error("[spam-nuker] Reminder check failed:", err),
+  );
 });
 
 client.on("messageCreate", async (message) => {
@@ -105,7 +115,8 @@ client.on("guildBanRemove", async (ban) => {
 client.on("interactionCreate", async (interaction) => {
   try {
     if (interaction.isChatInputCommand()) {
-      await handleConfigCommand(interaction);
+      if (await handleConfigCommand(interaction)) return;
+      await handleReminderCommand(interaction);
       return;
     }
 
@@ -118,14 +129,12 @@ client.on("interactionCreate", async (interaction) => {
       err?.message ?? err,
     );
 
-    if (
-      interaction.isRepliable() &&
-      !interaction.replied &&
-      !interaction.deferred
-    ) {
-      await interaction
-        .reply({ content: "Something went wrong.", ephemeral: true })
-        .catch(() => {});
+    if (interaction.isRepliable()) {
+      if (interaction.deferred) {
+        await interaction.editReply({ content: "Something went wrong." }).catch(() => {});
+      } else if (!interaction.replied) {
+        await interaction.reply({ content: "Something went wrong.", ephemeral: true }).catch(() => {});
+      }
     }
   }
 });

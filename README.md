@@ -83,6 +83,10 @@ The bot works in any number of servers. Every setting can be overridden per serv
 Overrides are stored in Redis and take effect immediately.
 JEV moderation alerts share a dedicated thread in the alert channel. The bot creates the thread on the first alert and reopens it if Discord archives it.
 
+## Reminders (`/remind`)
+
+Use `/remind when:<time> message:<text>` to receive a mention in the same channel at the chosen time, up to five years ahead. For example, `when:in 2 hours`, `when:tomorrow at 9am`, or `when:next Friday`. Times without an explicit timezone use the bot server's timezone. Reminders are stored in Redis and retried after bot restarts or temporary delivery failures. The bot needs permission to send messages in that channel.
+
 
 ---
 
