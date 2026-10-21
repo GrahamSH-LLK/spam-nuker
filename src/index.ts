@@ -13,7 +13,7 @@ import {
 import { getGuildConfig } from "./config.js";
 import { handleJevModeration } from "./handlers/jevModeration.js";
 import { handleSpamBan, handleSpamUnban } from "./handlers/banAlerts.js";
-import { reminderCommand, handleReminderCommand, handleChatReminderCommand, deliverDueReminders } from "./handlers/reminderCommand.js";
+import { reminderCommand, cancelReminderCommand, handleReminderCommand, handleCancelReminderCommand, handleChatReminderCommand, handleChatCancelReminderCommand, deliverDueReminders } from "./handlers/reminderCommand.js";
 
 // ── Configuration ─────────────────────────────────────────────────────────────
 
@@ -41,7 +41,7 @@ client.once("ready", async () => {
   console.log(`[spam-nuker] Logged in as ${client.user?.tag}`);
 
   try {
-    await client.application?.commands.set([configCommand.toJSON(), reminderCommand.toJSON()]);
+    await client.application?.commands.set([configCommand.toJSON(), reminderCommand.toJSON(), cancelReminderCommand.toJSON()]);
     console.log("[spam-nuker] Registered slash commands");
   } catch (err: any) {
     console.error(
@@ -67,6 +67,7 @@ client.on("messageCreate", async (message) => {
   if (message.system) return;
 
   if (await handleChatReminderCommand(message)) return;
+  if (await handleChatCancelReminderCommand(message)) return;
 
   const config = await getGuildConfig(message.guild.id);
   const opts = {
@@ -118,7 +119,8 @@ client.on("interactionCreate", async (interaction) => {
   try {
     if (interaction.isChatInputCommand()) {
       if (await handleConfigCommand(interaction)) return;
-      await handleReminderCommand(interaction);
+      if (await handleReminderCommand(interaction)) return;
+      await handleCancelReminderCommand(interaction);
       return;
     }
 

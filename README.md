@@ -85,9 +85,11 @@ JEV moderation alerts share a dedicated thread in the alert channel. The bot cre
 
 ## Reminders (`/remind`)
 
-Use `/remind when:<time> message:<text>` to receive a mention in the same channel at the chosen time, up to five years ahead. For example, `when:in 2 hours`, `when:tomorrow at 9am`, or `when:next Friday`. Times without an explicit timezone use the bot server's timezone. Reminders are stored in Redis and retried after bot restarts or temporary delivery failures. The bot needs permission to send messages in that channel.
+Use `/remind when:<time> message:<text>` to receive a mention in the same channel at the chosen time, up to five years ahead. For example, `when:in 2 hours`, `when:tomorrow at 9am EDT`, or `when:next Friday at 9am UTC`. Calendar times without a timezone default to Eastern Time, using EST or EDT for the scheduled date. The confirmation names the timezone and shows how to cancel and reschedule with another one. Reminders are stored in Redis and retried after bot restarts or temporary delivery failures. The bot needs permission to send messages in that channel.
 
-You can also use `v?remind in 2 hours to call mom` or its short form `v?rem call mom tomorrow at 9am` in a server channel. The `v‽` prefix works too: `v‽remind` and `v‽rem`.
+You can also use `v?remind in 2 hours to call mom` or its short form `v?rem call mom tomorrow at 9am EDT` in a server channel. The `v‽` prefix works too: `v‽remind` and `v‽rem`.
+
+Each confirmation includes a reminder ID. Only its creator can cancel it using `/cancel id:<ID>`, `v?cancel <ID>`, or `v‽cancel <ID>`. Cancellation is unavailable once delivery has begun. Reminder text cannot trigger `@everyone`, `@here`, or role mentions through the bot.
 
 
 ---
