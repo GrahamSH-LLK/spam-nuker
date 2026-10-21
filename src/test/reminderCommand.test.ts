@@ -26,6 +26,21 @@ describe("reminder time parsing", () => {
     expect(parseReminderTime("tomorrow at 9am", new Date("2026-07-15T12:00:00Z"))?.toISOString()).toBe("2026-07-16T13:00:00.000Z");
   });
 
+  it("interprets Eastern input the same way on servers in other timezones", () => {
+    const originalTimezone = process.env.TZ;
+    try {
+      for (const timezone of ["UTC", "America/Los_Angeles"]) {
+        process.env.TZ = timezone;
+        const reference = new Date("2026-10-21T04:17:00Z");
+        expect(parseReminderTime("tomorrow at 8am", reference)?.toISOString()).toBe("2026-10-22T12:00:00.000Z");
+        expect(parseReminderTime("Jan 15 at 8am", reference)?.toISOString()).toBe("2027-01-15T13:00:00.000Z");
+      }
+    } finally {
+      if (originalTimezone === undefined) delete process.env.TZ;
+      else process.env.TZ = originalTimezone;
+    }
+  });
+
   it("names EST or EDT and explains how to reschedule a defaulted time", () => {
     const winter = reminderConfirmation(Date.parse("2026-01-16T14:00:00Z"), "a1b2c3d4e5f6", true);
     const summer = reminderConfirmation(Date.parse("2026-07-16T13:00:00Z"), "a1b2c3d4e5f6", true);
@@ -33,8 +48,12 @@ describe("reminder time parsing", () => {
     expect(summer).toContain("Eastern Time (EDT)");
     expect(summer.split("\n")).toHaveLength(3);
     expect(summer).toContain("v?cancel a1b2c3d4e5f6");
-    expect(summer).toContain("7am UTC");
+    expect(summer).toContain("9:00 AM EDT");
+    expect(summer).toContain("explicit timezone");
+    expect(summer).not.toMatch(/<t:\d+:f>/);
     expect(summer).toContain("I’ll remind you");
+    const screenshot = reminderConfirmation(Date.parse("2026-10-22T12:00:00Z"), "a1b2c3d4e5f6", true);
+    expect(screenshot).toContain("8:00 AM EDT");
     expect(reminderConfirmation(Date.parse("2026-07-16T13:00:00Z"), "a1b2c3d4e5f6", true, "slash"))
       .toContain("/cancel id:a1b2c3d4e5f6");
   });

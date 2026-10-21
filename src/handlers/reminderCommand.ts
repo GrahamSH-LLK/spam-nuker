@@ -7,6 +7,7 @@ import { getRedisClient } from "../redis.js";
 const REMINDERS_KEY = "reminders:due";
 const DELIVERY_LEASE_MS = 2 * 60_000;
 const NO_MENTIONS = { parse: [] as [], repliedUser: false };
+const EASTERN_ZONE = "America/New_York";
 const CLAIM_REMINDER_SCRIPT = `
 local score = redis.call('ZSCORE', KEYS[1], ARGV[1])
 if not score or tonumber(score) > tonumber(ARGV[2]) then return 0 end
@@ -30,16 +31,48 @@ export function parseReminderTime(
 ): Date | null {
   const parsed = chrono.parse(
     input,
-    { instant: now, timezone: "America/New_York" },
+    { instant: now, timezone: "ET" },
     { forwardDate: true },
   )[0];
   if (!parsed) return null;
-  const due = parsed.date();
+  const due = parsed.start.isCertain("timezoneOffset")
+    ? parsed.date()
+    : easternDate(parsed.start);
+  if (!due) return null;
   const max = new Date(now);
-  max.setFullYear(max.getFullYear() + 5);
+  max.setUTCFullYear(max.getUTCFullYear() + 5);
   return due.getTime() > now.getTime() && due.getTime() <= max.getTime()
     ? due
     : null;
+}
+
+function easternOffsetMinutes(date: Date) {
+  const name = new Intl.DateTimeFormat("en-US", {
+    timeZone: EASTERN_ZONE,
+    timeZoneName: "shortOffset",
+  }).formatToParts(date).find((part) => part.type === "timeZoneName")?.value;
+  const match = /^GMT([+-])(\d{1,2})(?::(\d{2}))?$/.exec(name ?? "");
+  if (!match) throw new Error(`Unexpected Eastern timezone offset: ${name}`);
+  return (match[1] === "+" ? 1 : -1) * (Number(match[2]) * 60 + Number(match[3] ?? 0));
+}
+
+function easternDate(start: ReturnType<typeof chrono.parse>[number]["start"]): Date | null {
+  const wall = Date.UTC(
+    start.get("year")!, start.get("month")! - 1, start.get("day")!,
+    start.get("hour")!, start.get("minute")!, start.get("second")!, start.get("millisecond")!,
+  );
+  let due = new Date(wall - easternOffsetMinutes(new Date(wall)) * 60_000);
+  due = new Date(wall - easternOffsetMinutes(due) * 60_000);
+  // Reject wall times skipped by the spring DST transition.
+  const parts = new Intl.DateTimeFormat("en-US", {
+    timeZone: EASTERN_ZONE, year: "numeric", month: "numeric", day: "numeric",
+    hour: "numeric", minute: "numeric", second: "numeric", hourCycle: "h23",
+  }).formatToParts(due);
+  const value = (type: string) => Number(parts.find((part) => part.type === type)?.value);
+  if (value("year") !== start.get("year") || value("month") !== start.get("month") ||
+      value("day") !== start.get("day") || value("hour") !== start.get("hour") ||
+      value("minute") !== start.get("minute") || value("second") !== start.get("second")) return null;
+  return due;
 }
 
 export function reminderTimeUsesDefaultTimezone(
@@ -48,7 +81,7 @@ export function reminderTimeUsesDefaultTimezone(
 ): boolean {
   const parsed = chrono.parse(
     input,
-    { instant: now, timezone: "America/New_York" },
+    { instant: now, timezone: "ET" },
     { forwardDate: true },
   )[0];
   if (!parsed) return false;
@@ -104,7 +137,7 @@ export function parseChatReminder(input: string, now = new Date()) {
   const body = input.slice(command[0].length).trim();
   const parsed = chrono.parse(
     body,
-    { instant: now, timezone: "America/New_York" },
+    { instant: now, timezone: "ET" },
     { forwardDate: true },
   )[0];
   if (!parsed) return { due: null, message: "", usesDefaultTimezone: false };
@@ -175,9 +208,20 @@ export function reminderConfirmation(
     .formatToParts(new Date(dueAt))
     .find((part) => part.type === "timeZoneName")?.value;
   const cancel = command === "slash" ? `/cancel id:${id}` : `v?cancel ${id}`;
-  const lines = [`I’ll remind you <t:${Math.floor(dueAt / 1000)}:f> in this channel.`];
+  const when = usesDefaultTimezone
+    ? `${new Intl.DateTimeFormat("en-US", {
+        timeZone: "America/New_York",
+        month: "short",
+        day: "numeric",
+        year: "numeric",
+        hour: "numeric",
+        minute: "2-digit",
+        timeZoneName: "short",
+      }).format(new Date(dueAt))} (<t:${Math.floor(dueAt / 1000)}:R>)`
+    : `<t:${Math.floor(dueAt / 1000)}:f>`;
+  const lines = [`I’ll remind you on ${when} in this channel.`];
   if (usesDefaultTimezone) {
-    lines.push(`I used Eastern Time (${zone}) since you didn’t give a timezone. To change it, cancel and try again with \`7am UTC\`.`);
+    lines.push(`I used Eastern Time (${zone}) since you didn’t give a timezone. To change it, cancel and try again with an explicit timezone.`);
   }
   lines.push(`ID: \`${id}\` · Cancel: \`${cancel}\``);
   return lines.join("\n");
