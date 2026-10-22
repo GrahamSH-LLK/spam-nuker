@@ -1,150 +1,93 @@
 # SpamHammer
 
-Discord moderation bot (discord.js v14 + Redis) that automatically **flags** and **times out** users who perform image-based or cross-channel spam.
-
-Key features:
-
-- Detects the same image uploaded across multiple channels using perceptual hashing (pHash).
-- Detects identical message content posted across multiple channels (cross-channel duplicates).
+Discord moderation bot that automatically flags and times out users who post the same image or message across multiple channels. It also handles reminders and emoji submissions.
 
 ---
 
 ## Quick start
 
-1. Clone and install dependencies
-
 ```bash
 git clone https://github.com/GrahamSH-LLK/spam-nuker.git
 cd spam-nuker
 npm install
+cp .env.example .env   # set DISCORD_TOKEN and anything else you need
+npm run build && npm start
 ```
 
-2. Configure environment
+For development, use `npm run dev` (no build step). Run tests with `npm test`.
 
-```bash
-cp .env.example .env
-# Edit .env and provide your DISCORD_TOKEN and other values
-```
-
-3. Build and run
-
-```bash
-npm run build   # compile TypeScript to dist/
-npm start       # run the compiled bot
-# or for development (no build step):
-npm run dev
-```
-
-4. Run tests
-
-```bash
-npm test
-```
-
-## Docker Compose
-
-You can run the bot and Redis together with Docker Compose:
+### Docker Compose
 
 ```bash
 cp .env.example .env
 docker compose up --build
 ```
 
-The compose file starts a Redis container for the bot and points `REDIS_URL` at the in-network Redis service automatically. Make sure `DISCORD_TOKEN` is set in your `.env` file before starting.
+This starts the bot together with Redis. Make sure `DISCORD_TOKEN` is set in `.env`.
 
 ---
 
-## Discord Developer Portal
+## Discord setup
 
-Enable these Privileged Gateway Intents for your bot application:
+Enable the **Server Members** and **Message Content** privileged intents for your bot application.
 
-- **Server Members Intent** – required to call `member.timeout()`
-- **Message Content Intent** – required to read message content for duplicate detection
+Invite the bot with the `bot` and `applications.commands` scopes and these permissions:
 
-Required bot permissions in your guild:
-
-- `View Channel` / `Read Message History`
-- `Moderate Members` (for timeouts)
-- `Send Messages` (for log-channel alerts)
-
-Invite the bot with both the `bot` and `applications.commands` OAuth2 scopes so slash commands are available.
+- View Channel, Read Message History
+- Moderate Members
+- Send Messages, Attach Files, Embed Links, Add Reactions
 
 ---
 
-## Per-server configuration (`/spam-config`)
+## Commands
 
-The bot works in any number of servers. Every setting can be overridden per server by members with the **Manage Server** permission:
+### `/spam-config`
 
-- `/spam-config view` — show the current settings (overrides are marked, everything else shows the bot default)
-- `/spam-config set setting:<name> value:<number>` — override a numeric setting for this server
-- `/spam-config log-channel channel:#alerts` — set the alert channel (omit the channel to disable alerts)
-- `/spam-config emoji-channel channel:#emoji-votes` — set the emoji submission channel (omit the channel to disable submissions)
-- `/spam-config reset [setting]` — remove one override, or all of them
+Per-server settings, available to members with **Manage Server**:
 
-Overrides are stored in Redis and take effect immediately.
-JEV moderation alerts share a dedicated thread in the alert channel. The bot creates the thread on the first alert and reopens it if Discord archives it.
+- `view` — show current settings
+- `set setting:<name> value:<number>` — override a setting
+- `log-channel channel:#alerts` — set the alert channel (omit to disable)
+- `emoji-channel channel:#emoji-votes` — set the emoji submission channel (omit to disable)
+- `reset [setting]` — remove one override, or all of them
 
-## Reminders (`/remind`)
+### `/remind`
 
-Use `/remind when:<time> [message:<text>]` to receive a mention in the same channel at the chosen time, up to five years ahead. For example, `when:in 2 hours`, `when:tomorrow at 9am EDT`, or `when:next Friday at 9am UTC`. Calendar times without a timezone default to Eastern Time, using EST or EDT for the scheduled date. The confirmation names the timezone and shows how to cancel and reschedule with another one. Reminders are stored in Redis and retried after bot restarts or temporary delivery failures. The bot needs permission to send messages in that channel.
+`/remind when:<time> [message:<text>]` mentions you in the same channel at the chosen time, e.g. `in 2 hours`, `tomorrow at 9am EDT`, or `next Friday at 9am UTC`. Times without a timezone default to Eastern Time.
 
-You can also use `v?remind in 2 hours to call mom`, `v?rem tomorrow at 7am`, or `v?rem call mom tomorrow at 9am EDT` in a server channel. When no message is given, it defaults to “It’s time.” The `v‽` prefix works too: `v‽remind` and `v‽rem`.
+Prefix forms also work: `v?remind in 2 hours to call mom`, `v?rem tomorrow at 7am` (or `v‽`).
 
-Each confirmation includes a reminder ID. Only its creator can cancel it using `/cancel id:<ID>`, `v?cancel <ID>`, or `v‽cancel <ID>`. Cancellation is unavailable once delivery has begun. Reminder text cannot trigger `@everyone`, `@here`, or role mentions through the bot.
+Cancel a reminder you created with `/cancel id:<ID>` or `v?cancel <ID>`.
 
+### `/submit-emoji`
+
+`/submit-emoji image:<file> name:<name>` proposes a custom emoji. Submissions go to the log channel for a moderator to approve or deny; approved ones are posted in the emoji channel for voting. Both channels must be configured. Each member gets two submissions per server.
 
 ---
-
-## Emoji submissions (`/submit-emoji`)
-
-Use `/submit-emoji image:<file> name:<name>` to propose a custom emoji. The image must be a PNG, JPEG, GIF or WebP of at most 8 MB; anything over Discord's 256 KB emoji limit is scaled down and recompressed (keeping its format and animation) until it fits, and the name 2–32 letters, numbers or underscores (Discord's emoji limits). The bot posts the submission in the channel set with `/spam-config emoji-channel` and adds 👍 and 👎 reactions for voting. Each member gets two submissions per server; a submission that fails to post doesn't count. It needs Send Messages, Attach Files, Embed Links and Add Reactions in that channel.
 
 ## Configuration (.env)
 
-The variables in your `.env` file act as **global defaults** for servers that have not overridden them with `/spam-config`. Common options include:
+These values are global defaults; servers can override them with `/spam-config`.
 
-| Variable                                | Default                  | Description                                                 |
-| --------------------------------------- | ------------------------ | ----------------------------------------------------------- |
-| `DISCORD_TOKEN`                         | —                        | Your bot token                                              |
-| `REDIS_URL`                             | `redis://localhost:6379` | Redis connection URL                                        |
-| `TIMEOUT_DURATION`                      | `600`                    | Timeout length in **seconds**                               |
-| `CROSS_CHANNEL_IMAGE_THRESHOLD`         | `2`                      | Images across multiple channels before flagging             |
-| `CROSS_CHANNEL_IMAGE_CHANNEL_THRESHOLD` | `2`                      | Distinct channels required for cross-channel image flagging |
-| `CROSS_CHANNEL_IMAGE_MAX_DISTANCE`      | `6`                      | Maximum pHash Hamming distance for image matches            |
-| `CROSS_CHANNEL_IMAGE_WINDOW`            | `60`                     | Sliding window for cross-channel image detection            |
-| `CROSS_CHANNEL_THRESHOLD`               | `3`                      | Channels a message may appear in before flagging            |
-| `CROSS_CHANNEL_WINDOW`                  | `60`                     | Sliding window in seconds for cross-channel detection       |
-| `TYPESAFE_API_KEY`                       | —                        | Enables Jev moderation when a server alert channel is set   |
-
----
-
-## How it works (overview)
-
-- Cross-channel image spam: downloads and hashes images with `@stabilityprotocol.com/phash`, stores recent pHashes in Redis, and times out users when matching pHash clusters exceed configured thresholds and span multiple channels.
-
-- Cross-channel duplicate spam: hashes message content (SHA-256 truncated) and counts distinct channels per hash. Users are timed out if the same content appears across many channels in `CROSS_CHANNEL_WINDOW` seconds.
-
-Tracking keys expire so users do not accumulate punishments over long periods.
-
----
-
-## Development
-
-- Build: `npm run build`
-- Run compiled: `npm start`
-- Run in dev (no build): `npm run dev`
-- Tests: `npm test` (project uses `vitest`)
-
-If you add or modify types, ensure `tsc` compiles without errors.
+| Variable                                | Default                  | Description                                          |
+| --------------------------------------- | ------------------------ | ---------------------------------------------------- |
+| `DISCORD_TOKEN`                         | —                        | Bot token                                            |
+| `REDIS_URL`                             | `redis://localhost:6379` | Redis connection URL                                 |
+| `TIMEOUT_DURATION`                      | `600`                    | Timeout length in seconds                            |
+| `CROSS_CHANNEL_IMAGE_THRESHOLD`         | `2`                      | Matching images before flagging                      |
+| `CROSS_CHANNEL_IMAGE_CHANNEL_THRESHOLD` | `2`                      | Distinct channels required for image flagging        |
+| `CROSS_CHANNEL_IMAGE_MAX_DISTANCE`      | `6`                      | How similar images must be to match (lower = stricter) |
+| `CROSS_CHANNEL_IMAGE_WINDOW`            | `60`                     | Image detection window in seconds                    |
+| `CROSS_CHANNEL_THRESHOLD`               | `3`                      | Channels a message may appear in before flagging     |
+| `CROSS_CHANNEL_WINDOW`                  | `60`                     | Message detection window in seconds                  |
+| `TYPESAFE_API_KEY`                      | —                        | Enables Jev moderation when an alert channel is set  |
 
 ---
 
 ## Contributing
 
-Contributions are welcome. Open issues for bugs or feature requests, and submit PRs for fixes. Keep changes focused and include tests when possible.
-
----
+Issues and PRs are welcome. Keep changes focused and include tests when possible.
 
 ## License
 
-This project is published under the ISC license. See `package.json` for details.
+ISC

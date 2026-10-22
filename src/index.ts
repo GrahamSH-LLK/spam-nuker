@@ -15,6 +15,7 @@ import { handleJevModeration } from "./handlers/jevModeration.js";
 import { handleSpamBan, handleSpamUnban } from "./handlers/banAlerts.js";
 import {
   emojiSubmitCommand,
+  handleEmojiReviewButton,
   handleEmojiSubmitCommand,
 } from "./handlers/emojiSubmission.js";
 import { reminderCommand, cancelReminderCommand, handleReminderCommand, handleCancelReminderCommand, handleChatReminderCommand, handleChatCancelReminderCommand, deliverDueReminders } from "./handlers/reminderCommand.js";
@@ -130,6 +131,7 @@ client.on("interactionCreate", async (interaction) => {
     }
 
     if (interaction.isButton()) {
+      if (await handleEmojiReviewButton(interaction)) return;
       await handleStoreImageHashesButton(interaction);
     }
   } catch (err: any) {

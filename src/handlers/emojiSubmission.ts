@@ -1,8 +1,18 @@
 import sharp from "sharp";
-import { EmbedBuilder, InteractionContextType, SlashCommandBuilder } from "discord.js";
+import {
+  ActionRowBuilder,
+  ButtonBuilder,
+  ButtonStyle,
+  EmbedBuilder,
+  InteractionContextType,
+  PermissionFlagsBits,
+  SlashCommandBuilder,
+} from "discord.js";
 import type {
   Attachment,
+  ButtonInteraction,
   ChatInputCommandInteraction,
+  Client,
   Message,
   SendableChannels,
 } from "discord.js";
@@ -29,6 +39,9 @@ const COMPRESSION_QUALITIES = [80, 60, 40];
 export const MAX_SUBMISSIONS_PER_USER = 2;
 const NAME_PATTERN = /^[A-Za-z0-9_]{2,32}$/;
 const NO_MENTIONS = { parse: [] as [] };
+const APPROVE_BUTTON_PREFIX = "spam-nuker:emoji-approve:";
+const DENY_BUTTON_PREFIX = "spam-nuker:emoji-deny:";
+const REVIEW_LOCK_MS = 30 * 24 * 60 * 60 * 1000;
 
 type EmojiFormat = "png" | "jpeg" | "gif" | "webp";
 
@@ -129,6 +142,11 @@ async function claimSubmissionSlot(guildId: string, userId: string) {
   return false;
 }
 
+/** Ensures only one moderator's approve/deny click takes effect. */
+function reviewLockKey(messageId: string) {
+  return `emoji_review:${messageId}`;
+}
+
 async function releaseSubmissionSlot(guildId: string, userId: string) {
   await getRedisClient().decr(submissionCountKey(guildId, userId));
 }
@@ -160,8 +178,8 @@ export async function handleEmojiSubmitCommand(
     return true;
   }
 
-  const { emojiChannelId } = await getGuildConfig(guildId);
-  if (!emojiChannelId) {
+  const { emojiChannelId, logChannelId } = await getGuildConfig(guildId);
+  if (!emojiChannelId || !logChannelId) {
     await interaction.reply({
       content: "Emoji submissions aren't set up on this server yet.",
       ephemeral: true,
@@ -169,12 +187,10 @@ export async function handleEmojiSubmitCommand(
     return true;
   }
 
-  const channel = await interaction.client.channels
-    .fetch(emojiChannelId)
-    .catch(() => null);
-  if (!channel?.isSendable()) {
+  const reviewChannel = await fetchSendableChannel(interaction.client, logChannelId);
+  if (!reviewChannel) {
     await interaction.reply({
-      content: "I can't post in the emoji submission channel. Ask a moderator to check its permissions.",
+      content: "I can't post in the emoji review channel. Ask a moderator to check its permissions.",
       ephemeral: true,
     });
     return true;
@@ -189,31 +205,37 @@ export async function handleEmojiSubmitCommand(
   }
 
   // Hand the slot back if we don't end up posting, so failures don't count.
-  let submission: Message | null = null;
+  let review: Message | null = null;
   try {
-    submission = await postSubmission(interaction, channel, attachment, name);
+    review = await postForReview(interaction, reviewChannel, attachment, name);
   } finally {
-    if (!submission) {
+    if (!review) {
       await releaseSubmissionSlot(guildId, interaction.user.id).catch(() => {});
     }
   }
-  if (!submission) return true;
-
-  try {
-    await submission.react("👍");
-    await submission.react("👎");
-  } catch (err: any) {
-    console.error("[spam-nuker] Failed to add emoji vote reactions:", err?.message ?? err);
-  }
+  if (!review) return true;
 
   await interaction.editReply({
-    content: `Submitted \`:${name}:\` for voting: ${submission.url}`,
+    content: `Submitted \`:${name}:\` for review. If a moderator approves it, it'll be posted in <#${emojiChannelId}> for voting.`,
   });
   return true;
 }
 
-/** Downloads, compresses and posts the emoji. Returns null if it can't. */
-async function postSubmission(
+async function fetchSendableChannel(client: Client, channelId: string) {
+  const channel = await client.channels.fetch(channelId).catch(() => null);
+  return channel?.isSendable() ? channel : null;
+}
+
+function emojiFileName(name: string, contentType: string | null) {
+  const format = emojiFormat(contentType);
+  return `${name}.${format === "jpeg" ? "jpg" : format}`;
+}
+
+/**
+ * Downloads and compresses the emoji, then posts it in the review channel
+ * with approve/deny buttons. Returns null if it can't.
+ */
+async function postForReview(
   interaction: ChatInputCommandInteraction,
   channel: SendableChannels,
   attachment: Attachment,
@@ -236,17 +258,152 @@ async function postSubmission(
 
   // Upload the file rather than linking the interaction attachment, whose CDN
   // URL expires.
-  const format = emojiFormat(attachment.contentType);
-  const fileName = `${name}.${format === "jpeg" ? "jpg" : format}`;
+  const fileName = emojiFileName(name, attachment.contentType);
   const embed = new EmbedBuilder()
-    .setTitle(`:${name}:`)
+    .setTitle(`Emoji submission: :${name}:`)
     .setDescription(`Submitted by <@${interaction.user.id}>`)
     .setImage(`attachment://${fileName}`)
     .setTimestamp();
+  const buttonId = `${interaction.user.id}:${name}`;
 
   return channel.send({
     embeds: [embed],
     files: [{ attachment: image, name: fileName }],
+    components: [
+      new ActionRowBuilder<ButtonBuilder>().addComponents(
+        new ButtonBuilder()
+          .setCustomId(`${APPROVE_BUTTON_PREFIX}${buttonId}`)
+          .setLabel("Approve")
+          .setStyle(ButtonStyle.Success),
+        new ButtonBuilder()
+          .setCustomId(`${DENY_BUTTON_PREFIX}${buttonId}`)
+          .setLabel("Deny")
+          .setStyle(ButtonStyle.Danger),
+      ),
+    ],
     allowedMentions: NO_MENTIONS,
   });
+}
+
+/** Marks the review message as handled and removes its buttons. */
+async function closeReview(message: Message, status: string) {
+  const embed = EmbedBuilder.from(message.embeds[0]).addFields({
+    name: "Status",
+    value: status,
+  });
+  await message.edit({ embeds: [embed], components: [] });
+}
+
+/**
+ * Handles the approve/deny buttons on emoji review messages. Returns true when
+ * the interaction was for one of them.
+ */
+export async function handleEmojiReviewButton(interaction: ButtonInteraction) {
+  const approving = interaction.customId.startsWith(APPROVE_BUTTON_PREFIX);
+  if (!approving && !interaction.customId.startsWith(DENY_BUTTON_PREFIX)) {
+    return false;
+  }
+
+  const guildId = interaction.guildId;
+  if (!guildId) return true;
+
+  if (!interaction.memberPermissions?.has(PermissionFlagsBits.ModerateMembers)) {
+    await interaction.reply({
+      content: "You need the Moderate Members permission to review emoji submissions.",
+      ephemeral: true,
+    });
+    return true;
+  }
+
+  const prefix = approving ? APPROVE_BUTTON_PREFIX : DENY_BUTTON_PREFIX;
+  const [submitterId, name] = interaction.customId.slice(prefix.length).split(":");
+  const message = interaction.message;
+
+  const redis = getRedisClient();
+  const lockKey = reviewLockKey(message.id);
+  if (!(await redis.set(lockKey, interaction.user.id, "PX", REVIEW_LOCK_MS, "NX"))) {
+    await interaction.reply({
+      content: "This submission has already been reviewed.",
+      ephemeral: true,
+    });
+    return true;
+  }
+
+  // Release the lock on failure so another moderator can try again.
+  let reviewed = false;
+  try {
+    if (approving) {
+      reviewed = await approveSubmission(interaction, guildId, submitterId, name);
+    } else {
+      await interaction.deferReply({ ephemeral: true });
+      await closeReview(message, `Denied by <@${interaction.user.id}>`);
+      await interaction.editReply({ content: `Denied \`:${name}:\`.` });
+      reviewed = true;
+    }
+  } finally {
+    if (!reviewed) await redis.del(lockKey).catch(() => {});
+  }
+  return true;
+}
+
+async function approveSubmission(
+  interaction: ButtonInteraction,
+  guildId: string,
+  submitterId: string,
+  name: string,
+) {
+  await interaction.deferReply({ ephemeral: true });
+
+  const { emojiChannelId } = await getGuildConfig(guildId);
+  const channel = emojiChannelId
+    ? await fetchSendableChannel(interaction.client, emojiChannelId)
+    : null;
+  if (!channel) {
+    await interaction.editReply({
+      content: "The emoji submission channel isn't set or I can't post in it. Check `/spam-config emoji-channel`.",
+    });
+    return false;
+  }
+
+  const attachment = interaction.message.attachments.first();
+  if (!attachment) {
+    await interaction.editReply({ content: "This submission's image is missing." });
+    return false;
+  }
+  const response = await fetch(attachment.url);
+  if (!response.ok) throw new Error(`Failed to download emoji: HTTP ${response.status}`);
+  const image = Buffer.from(await response.arrayBuffer());
+
+  const fileName = emojiFileName(name, attachment.contentType);
+  const embed = new EmbedBuilder()
+    .setTitle(`:${name}:`)
+    .setDescription(`Submitted by <@${submitterId}>`)
+    .setImage(`attachment://${fileName}`)
+    .setTimestamp();
+
+  const submission = await channel.send({
+    embeds: [embed],
+    files: [{ attachment: image, name: fileName }],
+    allowedMentions: NO_MENTIONS,
+  });
+
+  try {
+    await submission.react("👍");
+    await submission.react("👎");
+  } catch (err: any) {
+    console.error("[spam-nuker] Failed to add emoji vote reactions:", err?.message ?? err);
+  }
+
+  // The submission is live from here on, so don't let a failed edit release
+  // the lock and allow a second post.
+  await closeReview(
+    interaction.message,
+    `Approved by <@${interaction.user.id}>: ${submission.url}`,
+  ).catch((err) =>
+    console.error("[spam-nuker] Failed to update emoji review message:", err?.message ?? err),
+  );
+  await interaction
+    .editReply({ content: `Approved \`:${name}:\`: ${submission.url}` })
+    .catch(() => {});
+  return true;
 }
