@@ -97,7 +97,7 @@ Each confirmation includes a reminder ID. Only its creator can cancel it using `
 
 ## Emoji submissions (`/submit-emoji`)
 
-Use `/submit-emoji image:<file> name:<name>` to propose a custom emoji. The image must be a PNG, JPEG, GIF or WebP of at most 256 KB, and the name 2–32 letters, numbers or underscores (Discord's emoji limits). The bot posts the submission in the channel set with `/spam-config emoji-channel` and adds 👍 and 👎 reactions for voting. Each member gets two submissions per server; a submission that fails to post doesn't count. It needs Send Messages, Attach Files, Embed Links and Add Reactions in that channel.
+Use `/submit-emoji image:<file> name:<name>` to propose a custom emoji. The image must be a PNG, JPEG, GIF or WebP of at most 8 MB; anything over Discord's 256 KB emoji limit is scaled down and recompressed (keeping its format and animation) until it fits, and the name 2–32 letters, numbers or underscores (Discord's emoji limits). The bot posts the submission in the channel set with `/spam-config emoji-channel` and adds 👍 and 👎 reactions for voting. Each member gets two submissions per server; a submission that fails to post doesn't count. It needs Send Messages, Attach Files, Embed Links and Add Reactions in that channel.
 
 ## Configuration (.env)
 
