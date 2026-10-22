@@ -346,6 +346,10 @@ export async function handleEmojiReviewButton(interaction: ButtonInteraction) {
   return true;
 }
 
+function submissionImageUrl(message: Message | null) {
+  return message?.attachments.first()?.url ?? message?.embeds[0]?.image?.url ?? null;
+}
+
 async function approveSubmission(
   interaction: ButtonInteraction,
   guildId: string,
@@ -367,10 +371,16 @@ async function approveSubmission(
 
   // Files referenced by an embed (attachment://) show up as the embed's image
   // rather than in message.attachments.
+  // The interaction payload can be partial, so fall back to a fresh fetch.
   const imageUrl =
-    interaction.message.attachments.first()?.url ??
-    interaction.message.embeds[0]?.image?.url;
+    submissionImageUrl(interaction.message) ??
+    submissionImageUrl(await interaction.message.fetch(true).catch(() => null));
   if (!imageUrl) {
+    console.error("[spam-nuker] Emoji review message has no image:", {
+      messageId: interaction.message.id,
+      attachments: interaction.message.attachments.size,
+      embeds: interaction.message.embeds.map((embed) => embed.data),
+    });
     await interaction.editReply({ content: "This submission's image is missing." });
     return false;
   }
