@@ -44,3 +44,11 @@ test("mergeGuildConfig – empty log channel disables alerts", () => {
 
   expect(merged.logChannelId).toBeNull();
 });
+
+test("mergeGuildConfig – stored emoji channel overrides the default", () => {
+  const merged = mergeGuildConfig(getDefaultConfig(), {
+    emojiChannelId: "123456789",
+  });
+
+  expect(merged.emojiChannelId).toBe("123456789");
+});

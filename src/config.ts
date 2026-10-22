@@ -9,9 +9,11 @@ export interface GuildConfig {
   messageThreshold: number;
   messageWindow: number;
   logChannelId: string | null;
+  emojiChannelId: string | null;
 }
 
-export type NumericConfigKey = Exclude<keyof GuildConfig, "logChannelId">;
+export type ChannelConfigKey = "logChannelId" | "emojiChannelId";
+export type NumericConfigKey = Exclude<keyof GuildConfig, ChannelConfigKey>;
 
 export interface NumericSetting {
   key: NumericConfigKey;
@@ -93,6 +95,7 @@ export function getDefaultConfig(): GuildConfig {
     messageThreshold: envInt("CROSS_CHANNEL_THRESHOLD", 3),
     messageWindow: envInt("CROSS_CHANNEL_WINDOW", 60),
     logChannelId: null,
+    emojiChannelId: null,
   };
 }
 
@@ -102,7 +105,7 @@ function guildConfigKey(guildId: string) {
 
 /**
  * Merges stored per-guild overrides (raw Redis hash values) over the defaults.
- * An empty-string `logChannelId` means alerts were explicitly disabled.
+ * An empty-string channel ID means that feature was explicitly disabled.
  */
 export function mergeGuildConfig(
   defaults: GuildConfig,
@@ -117,8 +120,8 @@ export function mergeGuildConfig(
     if (!Number.isNaN(parsed)) config[setting.key] = parsed;
   }
 
-  if ("logChannelId" in stored) {
-    config.logChannelId = stored.logChannelId || null;
+  for (const key of ["logChannelId", "emojiChannelId"] as const) {
+    if (key in stored) config[key] = stored[key] || null;
   }
 
   return config;

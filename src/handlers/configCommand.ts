@@ -63,21 +63,34 @@ export const configCommand = new SlashCommandBuilder()
   )
   .addSubcommand((sub) =>
     sub
+      .setName("emoji-channel")
+      .setDescription("Set the emoji submission channel (omit to disable)")
+      .addChannelOption((opt) =>
+        opt
+          .setName("channel")
+          .setDescription("Channel for emoji submissions")
+          .addChannelTypes(ChannelType.GuildText),
+      ),
+  )
+  .addSubcommand((sub) =>
+    sub
       .setName("reset")
       .setDescription("Reset settings to the bot defaults")
       .addStringOption((opt) =>
         opt
           .setName("setting")
           .setDescription("Setting to reset (omit to reset everything)")
-          .addChoices(...settingChoices, {
-            name: "log-channel",
-            value: "log-channel",
-          }),
+          .addChoices(
+            ...settingChoices,
+            { name: "log-channel", value: "log-channel" },
+            { name: "emoji-channel", value: "emoji-channel" },
+          ),
       ),
   );
 
 function settingKeyFromChoice(choice: string): keyof GuildConfig | null {
   if (choice === "log-channel") return "logChannelId";
+  if (choice === "emoji-channel") return "emojiChannelId";
   return NUMERIC_SETTINGS.find((s) => s.choice === choice)?.key ?? null;
 }
 
@@ -98,6 +111,12 @@ async function replyWithConfig(
     ? `<#${config.logChannelId}>`
     : "disabled";
   lines.push(`• \`log-channel\`: ${logValue}${logSuffix} — Channel for spam alerts`);
+
+  const emojiSuffix = "emojiChannelId" in stored ? "" : " (default)";
+  const emojiValue = config.emojiChannelId
+    ? `<#${config.emojiChannelId}>`
+    : "disabled";
+  lines.push(`• \`emoji-channel\`: ${emojiValue}${emojiSuffix} — Channel for emoji submissions`);
 
   await interaction.reply({
     content: `**Spam detection settings**\n${lines.join("\n")}`,
@@ -186,6 +205,19 @@ export async function handleConfigCommand(
         ephemeral: true,
       });
     }
+    return true;
+  }
+
+  if (subcommand === "emoji-channel") {
+    const channel = interaction.options.getChannel("channel");
+    // Empty string marks submissions as explicitly disabled for this guild.
+    await setGuildConfigValue(guildId, "emojiChannelId", channel?.id ?? "");
+    await interaction.reply({
+      content: channel
+        ? `Emoji submissions will be posted in <#${channel.id}>.`
+        : "Emoji submissions are now disabled for this server.",
+      ephemeral: true,
+    });
     return true;
   }
 

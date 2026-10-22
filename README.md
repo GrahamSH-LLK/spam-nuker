@@ -78,6 +78,7 @@ The bot works in any number of servers. Every setting can be overridden per serv
 - `/spam-config view` — show the current settings (overrides are marked, everything else shows the bot default)
 - `/spam-config set setting:<name> value:<number>` — override a numeric setting for this server
 - `/spam-config log-channel channel:#alerts` — set the alert channel (omit the channel to disable alerts)
+- `/spam-config emoji-channel channel:#emoji-votes` — set the emoji submission channel (omit the channel to disable submissions)
 - `/spam-config reset [setting]` — remove one override, or all of them
 
 Overrides are stored in Redis and take effect immediately.
@@ -93,6 +94,10 @@ Each confirmation includes a reminder ID. Only its creator can cancel it using `
 
 
 ---
+
+## Emoji submissions (`/submit-emoji`)
+
+Use `/submit-emoji image:<file> name:<name>` to propose a custom emoji. The image must be a PNG, JPEG, GIF or WebP of at most 256 KB, and the name 2–32 letters, numbers or underscores (Discord's emoji limits). The bot posts the submission in the channel set with `/spam-config emoji-channel` and adds 👍 and 👎 reactions for voting. Each member gets two submissions per server; a submission that fails to post doesn't count. It needs Send Messages, Attach Files, Embed Links and Add Reactions in that channel.
 
 ## Configuration (.env)
 

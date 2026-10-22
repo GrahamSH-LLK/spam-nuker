@@ -13,6 +13,10 @@ import {
 import { getGuildConfig } from "./config.js";
 import { handleJevModeration } from "./handlers/jevModeration.js";
 import { handleSpamBan, handleSpamUnban } from "./handlers/banAlerts.js";
+import {
+  emojiSubmitCommand,
+  handleEmojiSubmitCommand,
+} from "./handlers/emojiSubmission.js";
 import { reminderCommand, cancelReminderCommand, handleReminderCommand, handleCancelReminderCommand, handleChatReminderCommand, handleChatCancelReminderCommand, deliverDueReminders } from "./handlers/reminderCommand.js";
 
 // ── Configuration ─────────────────────────────────────────────────────────────
@@ -41,7 +45,7 @@ client.once("ready", async () => {
   console.log(`[spam-nuker] Logged in as ${client.user?.tag}`);
 
   try {
-    await client.application?.commands.set([configCommand.toJSON(), reminderCommand.toJSON(), cancelReminderCommand.toJSON()]);
+    await client.application?.commands.set([configCommand.toJSON(), reminderCommand.toJSON(), cancelReminderCommand.toJSON(), emojiSubmitCommand.toJSON()]);
     console.log("[spam-nuker] Registered slash commands");
   } catch (err: any) {
     console.error(
@@ -120,6 +124,7 @@ client.on("interactionCreate", async (interaction) => {
     if (interaction.isChatInputCommand()) {
       if (await handleConfigCommand(interaction)) return;
       if (await handleReminderCommand(interaction)) return;
+      if (await handleEmojiSubmitCommand(interaction)) return;
       await handleCancelReminderCommand(interaction);
       return;
     }
