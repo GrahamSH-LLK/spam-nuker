@@ -365,16 +365,22 @@ async function approveSubmission(
     return false;
   }
 
-  const attachment = interaction.message.attachments.first();
-  if (!attachment) {
+  // Files referenced by an embed (attachment://) show up as the embed's image
+  // rather than in message.attachments.
+  const imageUrl =
+    interaction.message.attachments.first()?.url ??
+    interaction.message.embeds[0]?.image?.url;
+  if (!imageUrl) {
     await interaction.editReply({ content: "This submission's image is missing." });
     return false;
   }
-  const response = await fetch(attachment.url);
+  const response = await fetch(imageUrl);
   if (!response.ok) throw new Error(`Failed to download emoji: HTTP ${response.status}`);
   const image = Buffer.from(await response.arrayBuffer());
 
-  const fileName = emojiFileName(name, attachment.contentType);
+  // Reuse the extension the review upload was given.
+  const extension = new URL(imageUrl).pathname.split(".").pop();
+  const fileName = `${name}.${extension}`;
   const embed = new EmbedBuilder()
     .setTitle(`:${name}:`)
     .setDescription(`Submitted by <@${submitterId}>`)
